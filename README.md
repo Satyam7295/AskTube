@@ -1,6 +1,6 @@
 # AskTube
 
-AskTube is a monorepo foundation for a domain-agnostic conversational RAG application for YouTube playlists. It validates YouTube playlist URLs, retrieves playlist metadata and ordered videos through a FastAPI backend using the official YouTube Data API v3, and persists structured YouTube transcripts in PostgreSQL. Retrieval, AI generation, and chat are intentionally not implemented yet.
+AskTube is a monorepo foundation for a domain-agnostic conversational RAG application for YouTube playlists. It validates YouTube playlist URLs, retrieves playlist metadata and ordered videos through a FastAPI backend using the official YouTube Data API v3, persists structured YouTube transcripts in PostgreSQL, and retrieves semantically relevant transcript chunks from Qdrant. AI generation and chat are intentionally not implemented yet.
 
 ## Structure
 
@@ -123,8 +123,49 @@ Example flow:
 5. Upsert payloads into Qdrant with deterministic point IDs.
 6. Return the number of chunks upserted and skipped.
 
-This sync layer is intentionally storage-only and does not implement search, retrieval, or LLM generation.
+This sync layer is storage-only. Semantic retrieval uses the existing embeddings and Qdrant payloads without loading all chunks from PostgreSQL.
+
+## Semantic Retrieval
+
+Search the indexed transcript chunks with the existing embedding model and Qdrant cosine similarity search:
+
+```http
+POST /api/search
+Content-Type: application/json
+
+{
+  "query": "What is database normalization?",
+  "top_k": 5,
+  "video_id": "dQw4w9WgXcQ",
+  "score_threshold": 0.5
+}
+```
+
+`query` is required. `top_k` defaults to `RETRIEVAL_TOP_K` (5) and is capped by `RETRIEVAL_MAX_TOP_K` (100). `video_id` restricts search to one YouTube video, while `score_threshold` is optional and uses Qdrant's cosine score filtering. Omit either optional field for global search or unthresholded top-k results.
+
+The response contains the normalized query, result count, and source metadata including chunk ID, video ID, similarity score, transcript text, timestamps, chunk index, language, and available segment/count metadata:
+
+```json
+{
+  "query": "What is database normalization?",
+  "result_count": 1,
+  "results": [
+    {
+      "chunk_id": 42,
+      "video_id": "dQw4w9WgXcQ",
+      "score": 0.84,
+      "text": "...",
+      "start_time": 120.5,
+      "end_time": 145.2,
+      "chunk_index": 7,
+      "language_code": "en"
+    }
+  ]
+}
+```
+
+Retrieval does not generate answers yet. The LLM/RAG layer will consume these retrieved chunks in the next feature.
 
 ## Implementation Summary
 
-AskTube validates YouTube playlist URLs locally, then retrieves playlist metadata and all ordered playlist videos through the backend. Pagination, API errors, loading, empty, and failure states are handled. Playlist and transcript database persistence are implemented. Transcript chunk embeddings use the local `sentence-transformers/all-MiniLM-L6-v2` model by default, with `EMBEDDING_MODEL`, `EMBEDDING_NORMALIZE`, and `EMBEDDING_BATCH_SIZE` configurable through the backend environment. The model produces 384-dimensional normalized vectors intended for later cosine-similarity use. Stored vectors remain in PostgreSQL metadata fields for persistence, and Qdrant stores corresponding vectors and payload metadata for future retrieval workflows. Retrieval, AI generation, and chat remain out of scope.
+AskTube validates YouTube playlist URLs locally, then retrieves playlist metadata and all ordered playlist videos through the backend. Pagination, API errors, loading, empty, and failure states are handled. Playlist and transcript database persistence are implemented. Transcript chunk embeddings use the local `sentence-transformers/all-MiniLM-L6-v2` model by default, with `EMBEDDING_MODEL`, `EMBEDDING_NORMALIZE`, and `EMBEDDING_BATCH_SIZE` configurable through the backend environment. The model produces 384-dimensional normalized vectors for cosine-similarity retrieval. Stored vectors remain in PostgreSQL metadata fields for persistence, and Qdrant stores corresponding vectors and payload metadata for semantic retrieval. Retrieval returns source chunks only; AI generation and chat remain out of scope.

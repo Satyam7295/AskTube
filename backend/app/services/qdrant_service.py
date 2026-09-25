@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from math import isfinite
+from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import Settings, get_settings
 
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.http.models import Distance, VectorParams
+    from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchValue, VectorParams
 except ImportError:  # pragma: no cover - exercised only when the dependency is absent.
     QdrantClient = None  # type: ignore[assignment]
     Distance = None  # type: ignore[assignment]
     VectorParams = None  # type: ignore[assignment]
+    FieldCondition = Filter = MatchValue = None  # type: ignore[assignment]
 
 
 class QdrantConfigurationError(RuntimeError):
@@ -21,6 +23,17 @@ class QdrantConfigurationError(RuntimeError):
 
 class QdrantVectorValidationError(ValueError):
     """Raised when a vector cannot safely be stored."""
+
+
+class QdrantSearchError(RuntimeError):
+    """Raised when a Qdrant search cannot be completed."""
+
+
+@dataclass(frozen=True)
+class QdrantSearchResult:
+    point_id: Any
+    score: float
+    payload: dict[str, Any]
 
 
 class QdrantService:
@@ -169,3 +182,44 @@ class QdrantService:
             return self.client.get_collection(self.settings.qdrant_collection_name)
         except Exception as error:
             raise QdrantConfigurationError("Qdrant collection information is unavailable.") from error
+
+    def search(
+        self,
+        vector: Sequence[float],
+        limit: int,
+        video_id: str | None = None,
+        score_threshold: float | None = None,
+    ) -> list[QdrantSearchResult]:
+        query_vector = self.validate_vector(vector)
+        if limit < 1:
+            raise QdrantVectorValidationError("Search limit must be positive.")
+
+        query_filter = None
+        if video_id is not None:
+            if Filter is None or FieldCondition is None or MatchValue is None:
+                raise QdrantConfigurationError("Qdrant client dependency is not installed.")
+            query_filter = Filter(must=[FieldCondition(key="video_id", match=MatchValue(value=video_id))])
+
+        try:
+            points = self.client.search(
+                collection_name=self.settings.qdrant_collection_name,
+                query_vector=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=True,
+            )
+        except Exception as error:
+            raise QdrantSearchError("Qdrant vector search failed.") from error
+
+        results: list[QdrantSearchResult] = []
+        for point in points or []:
+            payload = getattr(point, "payload", None)
+            if not isinstance(payload, dict):
+                raise QdrantSearchError("Qdrant returned malformed search metadata.")
+            try:
+                score = float(getattr(point, "score"))
+            except (TypeError, ValueError) as error:
+                raise QdrantSearchError("Qdrant returned a malformed similarity score.") from error
+            results.append(QdrantSearchResult(getattr(point, "id", None), score, payload))
+        return results

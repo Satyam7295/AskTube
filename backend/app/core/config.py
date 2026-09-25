@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     embedding_dimension: int = 384
     embedding_normalize: bool = True
     embedding_batch_size: int = 32
+    retrieval_top_k: int = 5
+    retrieval_max_top_k: int = 100
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
