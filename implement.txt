@@ -2,7 +2,12 @@
 
 ## Implementation Summary
 
-AskTube is a YouTube playlist analysis application whose current implementation includes robust local playlist URL validation, YouTube Data API v3 retrieval, and PostgreSQL persistence for playlist and video metadata. The backend keeps the existing API contract intact while persisting the discovered metadata in a durable SQL database before returning the playlist payload to the frontend.
+AskTube now supports a clear two-path architecture:
+
+- Ingestion continues to fetch playlist metadata and videos from YouTube, transform them, and persist them to PostgreSQL.
+- Retrieval can now load a previously indexed playlist directly from PostgreSQL without issuing any YouTube API request.
+
+The local database is treated as a reusable source for playlist metadata and ordered video records. The frontend continues to render the existing playlist experience while using a dedicated stored-playlist API client for database-backed reads.
 
 ## Completed Features
 
@@ -14,146 +19,122 @@ AskTube is a YouTube playlist analysis application whose current implementation 
 - Playlist metadata retrieval
 - Video retrieval
 - PostgreSQL persistence
+- Persisted playlist retrieval
 
 ## Current Architecture
 
 Frontend
-   ↓
+ ↓
 FastAPI
-   ↓
-YouTube service
-   ↓
-PostgreSQL repository
-   ↓
-PostgreSQL
+ ↓
+ ┌───────────────┐
+ │               │
+YouTube       PostgreSQL
+ │               │
+ ↓               ↓
+Ingestion      Retrieval
+ │               │
+ └──────→ PostgreSQL
 
-Relevant frontend pieces:
-- frontend/app/page.tsx for the main page flow
-- frontend/components/playlist/PlaylistInput.tsx for user input
-- frontend/components/playlist/PlaylistView.tsx for playlist rendering
-- frontend/lib/youtube/playlistUrl.ts for URL parsing and validation
-- frontend/components/chat/ChatWindow.tsx for the user-facing chat surface
+Actual implementation flow:
 
-Relevant backend pieces:
-- backend/app/api/playlists.py for the playlist endpoint
-- backend/app/services/youtube/playlist_service.py for YouTube API retrieval
-- backend/app/services/playlist_service.py for persistence orchestration
-- backend/app/repositories/playlist_repository.py for database CRUD/upsert operations
-- backend/app/models/playlist.py and backend/app/models/video.py for schema definitions
-- backend/app/db/database.py for SQLAlchemy engine/session creation and initialization
+- Frontend sends playlist requests to FastAPI routes.
+- The YouTube-backed ingestion route calls the YouTube service, then the playlist repository, then PostgreSQL.
+- The PostgreSQL-backed stored retrieval route calls the repository directly and returns the persisted playlist without any YouTube request.
+- Repository code contains no YouTube logic and is responsible only for database reads/writes.
 
-## Current Data Flow
+## API Endpoints
+
+Available playlist endpoints:
+
+- GET /api/playlists/{playlist_id}
+  - YouTube-backed ingestion and upsert.
+  - Fetches from the YouTube Data API, persists metadata and videos, and returns the playlist response.
+
+- GET /api/playlists/{playlist_id}/stored
+  - PostgreSQL-backed stored retrieval.
+  - Reads the persisted playlist and videos from PostgreSQL only.
+  - Returns 404 with "Playlist has not been indexed yet." when missing.
+
+## Database
+
+Playlist model
+- playlist_id: primary key, stores the natural YouTube playlist identifier.
+- title, description, thumbnail, channel_id, channel_title, published_at.
+- created_at, updated_at.
+
+Video model
+- id: internal primary key.
+- video_id
+- playlist_id: foreign key to playlists.playlist_id.
+- title, description, thumbnail, position, published_at, video_url, duration, available.
+- created_at, updated_at.
+
+Relationships and constraints
+- One playlist has many videos.
+- Each video is unique by (playlist_id, video_id).
+- Position is stored and preserved as the canonical ordering for playlist playback and retrieval.
+- Database reads order videos by position ASC, then video_id ASC as a stable tie-breaker.
+
+## Data Flow
+
+### Ingestion
 
 Playlist URL
 ↓
-URL validation
+Validation
 ↓
 Playlist ID
 ↓
-FastAPI
+YouTube
 ↓
-YouTube Data API
-↓
-Playlist + videos
-↓
-PostgreSQL upsert
+PostgreSQL
 ↓
 Frontend
 
-## Database Schema
+### Stored Retrieval
 
-Playlist entity
-- playlist_id: unique natural key from the YouTube playlist ID
-- title
-- description
-- thumbnail
-- channel_id
-- channel_title
-- published_at
-- created_at
-- updated_at
-
-Video entity
-- id: internal numeric primary key
-- video_id
-- playlist_id (foreign key to playlists.playlist_id)
-- title
-- description
-- thumbnail
-- position
-- published_at
-- video_url
-- duration
-- available
-- created_at
-- updated_at
-
-Relationship
-- One playlist has many videos.
-- Each video is uniquely constrained by (playlist_id, video_id) to prevent duplicates.
-- Position is preserved and used for ordered retrieval; videos are not alphabetized or date-sorted.
-
-## Environment Variables
-
-Required runtime variables without secrets:
-
-YOUTUBE_API_KEY=
-DATABASE_URL=
-
-The project stores these values in backend/.env and .env.example, and they are never committed with real credentials.
-
-## Files Created
-
-- backend/app/db/base.py
-- backend/app/db/database.py
-- backend/app/models/playlist.py
-- backend/app/models/video.py
-- backend/app/repositories/playlist_repository.py
-- backend/app/services/playlist_service.py
-- backend/tests/test_playlist_persistence.py
-
-## Files Modified
-
-- backend/app/api/playlists.py
-- backend/app/main.py
-- backend/app/core/config.py
-- backend/requirements.txt
-- backend/.env.example
-- .env.example
+Playlist ID
+↓
+PostgreSQL
+↓
+Frontend
 
 ## Testing
 
 Tests written:
-- 8 focused database persistence tests covering playlist creation, video creation, idempotent inserts, metadata update, new video insertion, ordering, and transaction safety.
+- 13 backend tests covering existing persistence plus persisted retrieval, ordering, not-found, empty-playlist, and no-YouTube-access behavior.
 
 Tests passed:
-- 8 passed in the backend persistence suite.
+- 13 passed in the backend suite.
 
 Tests failed:
-- 0 in the database persistence suite.
+- 0 backend test failures.
 
-Build status:
-- Backend persistence tests passed under Python 3.11 with SQLAlchemy-backed SQLite for repository validation.
-- Frontend production build was started, but the run did not complete within the available environment window and therefore is not claimed as passed.
+Build verification:
+- Backend regression suite: passed.
+- Frontend production build: attempted, but timed out during the local environment run and is not claimed as passing.
+- Known environment issue: local Next.js build can take longer than the available terminal window and may require a clearer environment to complete.
 
 Known environment limitations:
-- Real PostgreSQL service availability varies by local machine; repository tests use SQLite in-memory to remain self-contained.
-- The project still expects a configured backend environment and may require installing Python dependencies before local runs.
+- PostgreSQL is expected to be configured in the backend environment for live app usage, while repository tests use SQLite-backed database fixtures.
+- The frontend build was not conclusively verified in this environment due the timeout.
 
 ## Known Issues
 
-- FastAPI dependency/environment issue: if the backend environment is not created or requirements are not installed, the app will not run correctly until `python -m pip install -r requirements.txt` is executed.
-- Windows `.next/trace` permission lock: stale Next.js trace files can still block a clean build on some Windows machines. This remains a known local issue and must be cleared before a clean production build is expected to complete.
-- PostgreSQL runtime configuration must be present for real database persistence; no credentials are committed or exposed.
+- Frontend production build timed out in the current environment before completion, so a full Next.js production verification is still pending.
+- FastAPI startup still uses the older on_event pattern; it works, but it is a deprecation warning rather than a feature failure.
+- Database access requires a configured environment with DATABASE_URL for non-test usage.
 
 ## Not Yet Implemented
 
-- transcript extraction
+- transcripts
+- Faster-Whisper
 - transcript caching
 - time-aware chunking
 - embeddings
 - Qdrant
-- hybrid retrieval
+- retrieval
 - reranking
 - LLM generation
 - grounded answers
@@ -162,4 +143,4 @@ Known environment limitations:
 - query rewriting
 - full RAG pipeline
 
-The requested PostgreSQL persistence feature is implemented and the backend continues to return the same response shape expected by the frontend.
+The current implementation stops at persisted PostgreSQL retrieval and does not include the next feature set.

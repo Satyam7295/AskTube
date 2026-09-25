@@ -26,3 +26,20 @@ async def get_playlist(playlist_id: str) -> PlaylistResponse:
         ) from error
     except YouTubeServiceError as error:
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+
+@router.get("/{playlist_id}/stored", response_model=PlaylistResponse)
+async def get_stored_playlist(playlist_id: str) -> PlaylistResponse:
+    if not PLAYLIST_ID_PATTERN.fullmatch(playlist_id):
+        raise HTTPException(status_code=422, detail="Invalid YouTube playlist ID.")
+    service = PlaylistService(get_settings())
+    try:
+        response = service.get_persisted_playlist(playlist_id)
+        if response is None:
+            raise HTTPException(status_code=404, detail="Playlist has not been indexed yet.")
+        return response
+    except (DatabaseConfigurationError, ValueError) as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Playlist retrieval is unavailable. Configure DATABASE_URL before retrying.",
+        ) from error

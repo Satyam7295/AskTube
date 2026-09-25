@@ -175,6 +175,19 @@ class PlaylistRepository:
                 session.flush()
                 return playlist
 
+    def get_playlist_with_videos(self, playlist_id: str) -> tuple[Playlist | None, list[Video]]:
+        with self.session_factory() as session:
+            playlist = session.query(Playlist).filter(Playlist.playlist_id == playlist_id).one_or_none()
+            if playlist is None:
+                return None, []
+            videos = (
+                session.query(Video)
+                .filter(Video.playlist_id == playlist_id)
+                .order_by(Video.position.asc(), Video.video_id.asc())
+                .all()
+            )
+            return playlist, videos
+
     def get_playlist_videos(self, playlist_id: str) -> list[Video]:
         with self.session_factory() as session:
             return (

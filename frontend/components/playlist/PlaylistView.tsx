@@ -3,28 +3,9 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ExternalLink, MessageCircle, Play } from "lucide-react";
-
-type PlaylistData = {
-  playlist: {
-    playlist_id: string;
-    title: string;
-    description: string;
-    thumbnail: string | null;
-    channel_title: string | null;
-  };
-  videos: Array<{
-    video_id: string;
-    title: string;
-    description: string;
-    thumbnail: string | null;
-    position: number;
-    video_url: string;
-    duration: string | null;
-  }>;
-};
+import { getStoredPlaylist, type PlaylistData } from "../../lib/api/playlists";
 
 type PlaylistViewProps = { playlistId: string; onOpenChat: () => void };
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export function PlaylistView({ playlistId, onOpenChat }: PlaylistViewProps) {
   const [data, setData] = useState<PlaylistData | null>(null);
@@ -34,12 +15,7 @@ export function PlaylistView({ playlistId, onOpenChat }: PlaylistViewProps) {
     const controller = new AbortController();
     setData(null);
     setError(null);
-    fetch(`${apiUrl}/api/playlists/${encodeURIComponent(playlistId)}`, { signal: controller.signal })
-      .then(async (response) => {
-        const body = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(body?.detail ?? "We could not load this playlist.");
-        return body as PlaylistData;
-      })
+    void getStoredPlaylist(playlistId, controller.signal)
       .then(setData)
       .catch((fetchError: unknown) => {
         if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
@@ -49,7 +25,7 @@ export function PlaylistView({ playlistId, onOpenChat }: PlaylistViewProps) {
   }, [playlistId]);
 
   if (error) return <PlaylistState title="Could not load this playlist" message={error} />;
-  if (!data) return <PlaylistState title="Loading playlist" message="Fetching the playlist details and videos from YouTube..." loading />;
+  if (!data) return <PlaylistState title="Loading saved playlist" message="Loading saved playlist..." loading />;
 
   const { playlist, videos } = data;
   return <div className="mx-auto max-w-6xl px-4 py-7 sm:px-8 sm:py-10">

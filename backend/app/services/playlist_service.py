@@ -47,14 +47,28 @@ class PlaylistService:
             },
             payload,
         )
+        response.total_videos = len(response.videos)
         return response
 
     def get_persisted_playlist(self, playlist_id: str) -> PlaylistResponse | None:
-        playlist = self.repository.get_playlist(playlist_id)
+        playlist, videos = self.repository.get_playlist_with_videos(playlist_id)
         if playlist is None:
             return None
 
-        videos = self.repository.get_playlist_videos(playlist_id)
+        ordered_videos = [
+            PlaylistVideo(
+                video_id=video.video_id,
+                title=video.title,
+                description=video.description or "",
+                thumbnail=self._to_http_url(video.thumbnail),
+                position=video.position,
+                published_at=video.published_at,
+                video_url=video.video_url,
+                duration=video.duration,
+                available=video.available,
+            )
+            for video in videos
+        ]
         return PlaylistResponse(
             playlist=PlaylistMetadata(
                 playlist_id=playlist.playlist_id,
@@ -65,19 +79,8 @@ class PlaylistService:
                 channel_title=playlist.channel_title,
                 published_at=playlist.published_at,
             ),
-            videos=[
-                PlaylistVideo(
-                    video_id=video.video_id,
-                    title=video.title,
-                    description=video.description or "",
-                    thumbnail=self._to_http_url(video.thumbnail),
-                    position=video.position,
-                    published_at=video.published_at,
-                    video_url=video.video_url,
-                    duration=video.duration,
-                )
-                for video in videos
-            ],
+            videos=ordered_videos,
+            total_videos=len(ordered_videos),
         )
 
     @staticmethod

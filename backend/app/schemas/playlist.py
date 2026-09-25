@@ -22,8 +22,10 @@ class PlaylistVideo(BaseModel):
     published_at: datetime | None = None
     video_url: HttpUrl
     duration: str | None = None
+    available: bool = True
 
 
 class PlaylistResponse(BaseModel):
     playlist: PlaylistMetadata
     videos: list[PlaylistVideo]
+    total_videos: int = 0
