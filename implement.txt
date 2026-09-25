@@ -1,0 +1,26 @@
+## Implementation Summary
+
+AskTube validates YouTube playlist URLs locally, then passes the extracted `playlistId` to the backend for official YouTube Data API retrieval.
+
+Validation supports `youtube.com`, `www.youtube.com`, and `m.youtube.com` HTTPS URLs, including playlist URLs and video URLs containing a playlist parameter.
+
+## Feature: YouTube Playlist Metadata and Video Retrieval
+
+Implemented only the playlist retrieval slice requested for AskTube.
+
+- Added `GET /api/playlists/{playlist_id}` to the FastAPI backend.
+- Added Pydantic response schemas for playlist metadata and videos.
+- Added backend-only `YOUTUBE_API_KEY` configuration and `.env.example` entries.
+- Added an official YouTube Data API v3 service using `playlists.list`, paginated `playlistItems.list`, and `videos.list` for durations and upload metadata.
+- Preserved the original YouTube playlist order and exposed each item's `position`.
+- Added frontend loading, error, empty-playlist, and success states.
+- Connected the validated frontend playlist ID to the backend and displayed real playlist and video data.
+- Kept the API key out of frontend code; the browser communicates only with AskTube's backend.
+
+Not implemented: PostgreSQL, Qdrant, transcripts, Faster-Whisper, embeddings, chunking, reranking, LLM, RAG, chat generation, authentication, persistence, query rewriting, or semantic search.
+
+Validation notes:
+
+- `python -m compileall -q backend/app` passes.
+- The backend route smoke test requires installing `backend/requirements.txt` in the active Python environment.
+- The frontend production build was retried after clearing a Windows `.next/trace` permission lock and was still running at the end of this update.

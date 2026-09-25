@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     database_url: str | None = None
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None
+    youtube_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

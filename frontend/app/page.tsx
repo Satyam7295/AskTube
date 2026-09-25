@@ -16,6 +16,7 @@ export default function Home() {
 
   function handlePlaylistValidated(playlist: ValidatedPlaylist) {
     setValidatedPlaylist(playlist);
+    setView("playlist");
   }
 
   return (
@@ -49,7 +50,7 @@ export default function Home() {
           </section>
         </div>
       )}
-      {view === "playlist" && <PlaylistView onOpenChat={() => setView("chat")} />}
+      {view === "playlist" && validatedPlaylist && <PlaylistView playlistId={validatedPlaylist.playlistId} onOpenChat={() => setView("chat")} />}
       {view === "chat" && <ChatWindow />}
     </AppShell>
   );
