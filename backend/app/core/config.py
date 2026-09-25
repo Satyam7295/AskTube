@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 32
     retrieval_top_k: int = 5
     retrieval_max_top_k: int = 100
+    rag_max_context_chars: int = 12000
+    rag_max_sources: int = 5
+    groq_api_key: str | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

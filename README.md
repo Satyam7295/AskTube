@@ -166,6 +166,26 @@ The response contains the normalized query, result count, and source metadata in
 
 Retrieval does not generate answers yet. The LLM/RAG layer will consume these retrieved chunks in the next feature.
 
+## RAG Context Builder
+
+The internal context builder converts retrieval results into a deterministic, bounded `RAGContext` for a future LLM layer:
+
+```text
+Question
+  ↓
+Embedding
+  ↓
+Qdrant Retrieval
+  ↓
+Retrieved Chunks
+  ↓
+RAG Context Builder
+  ↓
+LLM (future)
+```
+
+It validates chunk metadata, removes duplicate chunk identities and exact repeated transcript text within a video, preserves source and timestamp metadata, and formats traceable plain text. Video groups are ordered by their best relevance score; chunks inside a group are chronological. Context is limited by `RAG_MAX_CONTEXT_CHARS` (default `12000`) and `RAG_MAX_SOURCES` (default `5`). The builder performs no database, Qdrant, embedding, network, or LLM calls and does not generate answers or citations.
+
 ## Implementation Summary
 
 AskTube validates YouTube playlist URLs locally, then retrieves playlist metadata and all ordered playlist videos through the backend. Pagination, API errors, loading, empty, and failure states are handled. Playlist and transcript database persistence are implemented. Transcript chunk embeddings use the local `sentence-transformers/all-MiniLM-L6-v2` model by default, with `EMBEDDING_MODEL`, `EMBEDDING_NORMALIZE`, and `EMBEDDING_BATCH_SIZE` configurable through the backend environment. The model produces 384-dimensional normalized vectors for cosine-similarity retrieval. Stored vectors remain in PostgreSQL metadata fields for persistence, and Qdrant stores corresponding vectors and payload metadata for semantic retrieval. Retrieval returns source chunks only; AI generation and chat remain out of scope.
