@@ -16,3 +16,12 @@ class VideoEmbeddingResponse(BaseModel):
     generated_chunks: int
     reused_chunks: int
     embeddings: list[ChunkEmbedding]
+
+
+class VectorSyncResponse(BaseModel):
+    video_id: str
+    language_code: str
+    collection: str
+    total_chunks: int
+    upserted: int
+    skipped: int

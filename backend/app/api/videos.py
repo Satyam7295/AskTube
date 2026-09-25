@@ -4,9 +4,10 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.repositories.transcript_repository import TranscriptDatabaseError, TranscriptRepository
 from app.schemas.chunk import TranscriptChunkResponse
-from app.schemas.embedding import ChunkEmbedding, VideoEmbeddingResponse
+from app.schemas.embedding import ChunkEmbedding, VideoEmbeddingResponse, VectorSyncResponse
 from app.schemas.transcript import TranscriptResponse
-from app.services.embedding_service import EmbeddingModelError, EmbeddingService
+from app.services.embedding_service import EmbeddingInputError, EmbeddingModelError, EmbeddingService
+from app.services.qdrant_service import QdrantConfigurationError, QdrantService, QdrantVectorValidationError
 from app.services.transcript.transcript_service import (
     TranscriptNotAvailableError,
     TranscriptProviderError,
@@ -80,7 +81,7 @@ def generate_video_embeddings(
         )
     except HTTPException:
         raise
-    except (TranscriptDatabaseError, EmbeddingModelError) as error:
+    except (TranscriptDatabaseError, EmbeddingInputError, EmbeddingModelError) as error:
         raise HTTPException(status_code=500, detail="Embedding generation failed.") from error
 
 
@@ -99,3 +100,46 @@ def get_video_chunks(video_id: str, language: str | None = Query(default=None, m
         raise HTTPException(status_code=404, detail=str(error)) from error
     except TranscriptDatabaseError as error:
         raise HTTPException(status_code=500, detail="Transcript persistence failed.") from error
+
+
+@router.post("/{video_id}/vectors", response_model=VectorSyncResponse)
+def sync_video_vectors(
+    video_id: str, language: str | None = Query(default=None, min_length=2, max_length=16)
+) -> VectorSyncResponse:
+    if not VIDEO_ID_PATTERN.fullmatch(video_id):
+        raise HTTPException(status_code=422, detail="Invalid YouTube video ID.")
+
+    repository = TranscriptRepository()
+    try:
+        chunks = repository.get_chunks(video_id, language)
+        if not chunks:
+            raise HTTPException(status_code=404, detail="No stored transcript chunks were found.")
+
+        embeddings_by_chunk_id: dict[int, list[float]] = {}
+        for chunk in chunks:
+            if chunk.embedding is None:
+                continue
+            vector = EmbeddingService.decode_vector(chunk.embedding)
+            if vector is None:
+                continue
+            embeddings_by_chunk_id[chunk.id] = vector
+
+        service = QdrantService()
+        result = service.sync_chunks(chunks, embeddings_by_chunk_id)
+        return VectorSyncResponse(
+            video_id=video_id,
+            language_code=chunks[0].language_code,
+            collection=result["collection"],
+            total_chunks=result["total_chunks"],
+            upserted=result["upserted"],
+            skipped=result["skipped"],
+        )
+    except HTTPException:
+        raise
+    except (TranscriptDatabaseError, QdrantConfigurationError, QdrantVectorValidationError) as error:
+        detail = "Vector synchronization failed."
+        if isinstance(error, QdrantConfigurationError):
+            detail = "Qdrant configuration is invalid."
+        elif isinstance(error, QdrantVectorValidationError):
+            detail = "One or more stored embeddings are invalid."
+        raise HTTPException(status_code=500, detail=detail) from error
