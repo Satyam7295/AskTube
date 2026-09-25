@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Callable
 
@@ -84,3 +85,20 @@ class TranscriptRepository:
                 return query.order_by(TranscriptChunk.chunk_index.asc()).all()
         except (DatabaseConfigurationError, SQLAlchemyError) as error:
             raise TranscriptDatabaseError("Transcript chunk read failed.") from error
+
+    def save_embeddings(self, embeddings: dict[int, list[float]], model_name: str, dimension: int) -> None:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    for chunk_id, vector in embeddings.items():
+                        chunk = session.get(TranscriptChunk, chunk_id)
+                        if chunk is None:
+                            raise TranscriptDatabaseError("Transcript chunk was not found.")
+                        chunk.embedding = json.dumps(vector, separators=(",", ":"))
+                        chunk.embedding_model = model_name
+                        chunk.embedding_dimension = dimension
+                        chunk.updated_at = datetime.utcnow()
+        except TranscriptDatabaseError:
+            raise
+        except (DatabaseConfigurationError, SQLAlchemyError) as error:
+            raise TranscriptDatabaseError("Transcript embedding persistence failed.") from error

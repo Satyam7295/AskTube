@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None
     youtube_api_key: str | None = None
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_normalize: bool = True
+    embedding_batch_size: int = 32
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
