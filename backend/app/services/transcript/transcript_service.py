@@ -64,7 +64,7 @@ class TranscriptService:
                 "video_id": response.video_id,
                 "language_code": response.language or language or "en",
                 "language_name": getattr(transcript, "language", None),
-                "is_generated": bool(response.is_generated),
+                "is_generated": response.is_generated,
                 "segments": [segment.model_dump() for segment in response.segments],
             }
         )

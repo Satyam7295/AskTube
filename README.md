@@ -1,6 +1,6 @@
 # AskTube
 
-AskTube is a monorepo foundation for a domain-agnostic conversational RAG application for YouTube playlists. It currently validates YouTube playlist URLs and retrieves playlist metadata and ordered videos through a FastAPI backend using the official YouTube Data API v3. Transcription, retrieval, AI generation, and chat are intentionally not implemented yet.
+AskTube is a monorepo foundation for a domain-agnostic conversational RAG application for YouTube playlists. It validates YouTube playlist URLs, retrieves playlist metadata and ordered videos through a FastAPI backend using the official YouTube Data API v3, and persists structured YouTube transcripts in PostgreSQL. Retrieval, AI generation, and chat are intentionally not implemented yet.
 
 ## Structure
 
@@ -66,4 +66,4 @@ Set `YOUTUBE_API_KEY` in `backend/.env` before loading a playlist. The key is us
 
 ## Implementation Summary
 
-AskTube validates YouTube playlist URLs locally, then retrieves playlist metadata and all ordered playlist videos through the backend. Pagination, API errors, loading, empty, and failure states are handled. Database, transcription, retrieval, and chat features remain out of scope.
+AskTube validates YouTube playlist URLs locally, then retrieves playlist metadata and all ordered playlist videos through the backend. Pagination, API errors, loading, empty, and failure states are handled. Playlist and transcript database persistence are implemented; embeddings, retrieval, AI generation, and chat remain out of scope.

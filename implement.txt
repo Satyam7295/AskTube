@@ -9,7 +9,7 @@
 
 AskTube is a YouTube-inspired application for indexing playlists and retrieving their stored metadata and videos. Playlist ingestion validates a YouTube playlist ID, retrieves playlist metadata and paginated video metadata through the YouTube Data API v3, and persists the result idempotently in PostgreSQL. Stored playlist retrieval reads PostgreSQL directly and preserves video ordering without calling YouTube.
 
-AskTube now also provides synchronous YouTube video transcript extraction for a standalone stored video ID. Transcript data is retrieved through the dedicated transcript provider service, normalized without changing spoken content, and returned with numeric timestamps. Transcript data is not persisted or cached yet.
+AskTube now also provides synchronous YouTube video transcript extraction for a standalone stored video ID. Transcript data is retrieved through the dedicated transcript provider service, normalized without changing spoken content, and returned with numeric timestamps. Transcript data is persisted as structured JSON and returned from PostgreSQL when already stored.
 
 ## Completed Features
 
@@ -39,7 +39,7 @@ Playlist/video ingestion  Transcript response  Stored playlists/videos
  │                          │                    │
  └──────────────────────────┴───────────────→ PostgreSQL
 
-Transcript extraction is deliberately separate from the YouTube playlist metadata service and from PostgreSQL persistence. The transcript service accepts a video ID, selects an available transcript deterministically, normalizes segment text, preserves numeric timing, and returns the response. No transcript tables or transcript cache exist.
+Transcript extraction is deliberately separate from the YouTube playlist metadata service. The transcript service checks PostgreSQL first, returns a valid stored transcript without contacting YouTube, and otherwise selects an available transcript deterministically, normalizes segment text, preserves numeric timing, persists the structured result, and returns the response.
 
 ## Current API Endpoints
 
@@ -111,13 +111,12 @@ Known environment limitations:
 ## Known Issues
 
 - FastAPI startup uses the existing deprecated `on_event` pattern; this is unrelated to transcript extraction.
-- Transcript data is available only synchronously through the endpoint and is not persisted or cached.
+- Transcript data is available synchronously through the endpoint and is persisted and cached by video ID and language code.
 - A complete frontend transcript display has intentionally not been added.
 
 ## Not Yet Implemented
 
-- Transcript persistence
-- Transcript caching
+- Transcript refresh and invalidation policies
 - Time-aware chunking
 - Embeddings
 - Qdrant
