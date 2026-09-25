@@ -1,26 +1,165 @@
+# AskTube
+
 ## Implementation Summary
 
-AskTube validates YouTube playlist URLs locally, then passes the extracted `playlistId` to the backend for official YouTube Data API retrieval.
+AskTube is a YouTube playlist analysis application whose current implementation includes robust local playlist URL validation, YouTube Data API v3 retrieval, and PostgreSQL persistence for playlist and video metadata. The backend keeps the existing API contract intact while persisting the discovered metadata in a durable SQL database before returning the playlist payload to the frontend.
 
-Validation supports `youtube.com`, `www.youtube.com`, and `m.youtube.com` HTTPS URLs, including playlist URLs and video URLs containing a playlist parameter.
+## Completed Features
 
-## Feature: YouTube Playlist Metadata and Video Retrieval
+- Project foundation
+- YouTube-inspired UI/UX
+- AskTube logo
+- Playlist URL validation
+- YouTube playlist retrieval
+- Playlist metadata retrieval
+- Video retrieval
+- PostgreSQL persistence
 
-Implemented only the playlist retrieval slice requested for AskTube.
+## Current Architecture
 
-- Added `GET /api/playlists/{playlist_id}` to the FastAPI backend.
-- Added Pydantic response schemas for playlist metadata and videos.
-- Added backend-only `YOUTUBE_API_KEY` configuration and `.env.example` entries.
-- Added an official YouTube Data API v3 service using `playlists.list`, paginated `playlistItems.list`, and `videos.list` for durations and upload metadata.
-- Preserved the original YouTube playlist order and exposed each item's `position`.
-- Added frontend loading, error, empty-playlist, and success states.
-- Connected the validated frontend playlist ID to the backend and displayed real playlist and video data.
-- Kept the API key out of frontend code; the browser communicates only with AskTube's backend.
+Frontend
+   ↓
+FastAPI
+   ↓
+YouTube service
+   ↓
+PostgreSQL repository
+   ↓
+PostgreSQL
 
-Not implemented: PostgreSQL, Qdrant, transcripts, Faster-Whisper, embeddings, chunking, reranking, LLM, RAG, chat generation, authentication, persistence, query rewriting, or semantic search.
+Relevant frontend pieces:
+- frontend/app/page.tsx for the main page flow
+- frontend/components/playlist/PlaylistInput.tsx for user input
+- frontend/components/playlist/PlaylistView.tsx for playlist rendering
+- frontend/lib/youtube/playlistUrl.ts for URL parsing and validation
+- frontend/components/chat/ChatWindow.tsx for the user-facing chat surface
 
-Validation notes:
+Relevant backend pieces:
+- backend/app/api/playlists.py for the playlist endpoint
+- backend/app/services/youtube/playlist_service.py for YouTube API retrieval
+- backend/app/services/playlist_service.py for persistence orchestration
+- backend/app/repositories/playlist_repository.py for database CRUD/upsert operations
+- backend/app/models/playlist.py and backend/app/models/video.py for schema definitions
+- backend/app/db/database.py for SQLAlchemy engine/session creation and initialization
 
-- `python -m compileall -q backend/app` passes.
-- The backend route smoke test requires installing `backend/requirements.txt` in the active Python environment.
-- The frontend production build was retried after clearing a Windows `.next/trace` permission lock and was still running at the end of this update.
+## Current Data Flow
+
+Playlist URL
+↓
+URL validation
+↓
+Playlist ID
+↓
+FastAPI
+↓
+YouTube Data API
+↓
+Playlist + videos
+↓
+PostgreSQL upsert
+↓
+Frontend
+
+## Database Schema
+
+Playlist entity
+- playlist_id: unique natural key from the YouTube playlist ID
+- title
+- description
+- thumbnail
+- channel_id
+- channel_title
+- published_at
+- created_at
+- updated_at
+
+Video entity
+- id: internal numeric primary key
+- video_id
+- playlist_id (foreign key to playlists.playlist_id)
+- title
+- description
+- thumbnail
+- position
+- published_at
+- video_url
+- duration
+- available
+- created_at
+- updated_at
+
+Relationship
+- One playlist has many videos.
+- Each video is uniquely constrained by (playlist_id, video_id) to prevent duplicates.
+- Position is preserved and used for ordered retrieval; videos are not alphabetized or date-sorted.
+
+## Environment Variables
+
+Required runtime variables without secrets:
+
+YOUTUBE_API_KEY=
+DATABASE_URL=
+
+The project stores these values in backend/.env and .env.example, and they are never committed with real credentials.
+
+## Files Created
+
+- backend/app/db/base.py
+- backend/app/db/database.py
+- backend/app/models/playlist.py
+- backend/app/models/video.py
+- backend/app/repositories/playlist_repository.py
+- backend/app/services/playlist_service.py
+- backend/tests/test_playlist_persistence.py
+
+## Files Modified
+
+- backend/app/api/playlists.py
+- backend/app/main.py
+- backend/app/core/config.py
+- backend/requirements.txt
+- backend/.env.example
+- .env.example
+
+## Testing
+
+Tests written:
+- 8 focused database persistence tests covering playlist creation, video creation, idempotent inserts, metadata update, new video insertion, ordering, and transaction safety.
+
+Tests passed:
+- 8 passed in the backend persistence suite.
+
+Tests failed:
+- 0 in the database persistence suite.
+
+Build status:
+- Backend persistence tests passed under Python 3.11 with SQLAlchemy-backed SQLite for repository validation.
+- Frontend production build was started, but the run did not complete within the available environment window and therefore is not claimed as passed.
+
+Known environment limitations:
+- Real PostgreSQL service availability varies by local machine; repository tests use SQLite in-memory to remain self-contained.
+- The project still expects a configured backend environment and may require installing Python dependencies before local runs.
+
+## Known Issues
+
+- FastAPI dependency/environment issue: if the backend environment is not created or requirements are not installed, the app will not run correctly until `python -m pip install -r requirements.txt` is executed.
+- Windows `.next/trace` permission lock: stale Next.js trace files can still block a clean build on some Windows machines. This remains a known local issue and must be cleared before a clean production build is expected to complete.
+- PostgreSQL runtime configuration must be present for real database persistence; no credentials are committed or exposed.
+
+## Not Yet Implemented
+
+- transcript extraction
+- transcript caching
+- time-aware chunking
+- embeddings
+- Qdrant
+- hybrid retrieval
+- reranking
+- LLM generation
+- grounded answers
+- timestamp navigation
+- conversation persistence
+- query rewriting
+- full RAG pipeline
+
+The requested PostgreSQL persistence feature is implemented and the backend continues to return the same response shape expected by the frontend.
