@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.database import DatabaseConfigurationError, get_session_factory
+from app.models.chunk import TranscriptChunk
 from app.models.transcript import Transcript
 
 
@@ -56,3 +57,30 @@ class TranscriptRepository:
                     return transcript
         except (DatabaseConfigurationError, SQLAlchemyError) as error:
             raise TranscriptDatabaseError("Transcript database write failed.") from error
+
+    def replace_chunks(self, video_id: str, language_code: str, chunks: list[dict]) -> list[TranscriptChunk]:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    session.query(TranscriptChunk).filter(
+                        TranscriptChunk.video_id == video_id,
+                        TranscriptChunk.language_code == language_code,
+                    ).delete(synchronize_session=False)
+                    stored = [TranscriptChunk(**chunk) for chunk in chunks]
+                    session.add_all(stored)
+                    session.flush()
+                    return stored
+        except (DatabaseConfigurationError, SQLAlchemyError) as error:
+            raise TranscriptDatabaseError("Transcript chunk persistence failed.") from error
+
+    def get_chunks(self, video_id: str, language_code: str | None = None) -> list[TranscriptChunk]:
+        try:
+            with self.session_factory() as session:
+                query = session.query(TranscriptChunk).filter(TranscriptChunk.video_id == video_id)
+                if language_code:
+                    query = query.filter(TranscriptChunk.language_code == language_code)
+                else:
+                    query = query.filter(TranscriptChunk.language_code == "en")
+                return query.order_by(TranscriptChunk.chunk_index.asc()).all()
+        except (DatabaseConfigurationError, SQLAlchemyError) as error:
+            raise TranscriptDatabaseError("Transcript chunk read failed.") from error
