@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AskTube",
-  description: "Ask thoughtful questions about any YouTube playlist.",
+  description: "Ask questions about the ideas inside any YouTube playlist.",
 };
 
 export default function RootLayout({

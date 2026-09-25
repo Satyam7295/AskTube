@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f1ea;
-  --foreground: #1d2925;
+  --background: #f9fafb;
+  --foreground: #16181d;
+  --muted: #60646c;
+  --line: #e5e7eb;
+  --accent: #ff3030;
 }
 
 * {
@@ -13,10 +16,21 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
 button,
 input {
   font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgba(255, 48, 48, 0.35);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: #ffd9d9;
 }

@@ -1,55 +1,56 @@
+"use client";
+
+import { useState } from "react";
+import { AppShell } from "../components/layout/AppShell";
+import { ChatWindow } from "../components/chat/ChatWindow";
+import { PlaylistInput } from "../components/playlist/PlaylistInput";
+import { PlaylistView } from "../components/playlist/PlaylistView";
+import type { ValidatedPlaylist } from "../lib/youtube/playlistUrl";
+
+type View = "home" | "playlist" | "chat";
+
 export default function Home() {
+  const [view, setView] = useState<View>("home");
+  const [playlistUrl, setPlaylistUrl] = useState("");
+  const [validatedPlaylist, setValidatedPlaylist] = useState<ValidatedPlaylist | null>(null);
+
+  function handlePlaylistValidated(playlist: ValidatedPlaylist) {
+    setValidatedPlaylist(playlist);
+  }
+
   return (
-    <main className="min-h-screen bg-[#f4f1ea] text-[#1d2925]">
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8 sm:px-10 lg:px-16">
-        <header className="flex items-center justify-between border-b border-[#1d2925]/15 pb-5">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e35f3f] text-sm font-bold text-white">A</span>
-            <span className="text-lg font-semibold tracking-tight">AskTube</span>
+    <AppShell activeView={view} onNavigate={(nextView) => setView(nextView as View)}>
+      {view === "home" && (
+        <div className="mx-auto max-w-6xl px-4 py-7 sm:px-8 sm:py-10">
+          <div className="mb-9 max-w-3xl">
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-[#e32626]">Your playlist, understood</p>
+            <h1 className="max-w-2xl text-3xl font-bold tracking-[-0.03em] text-[#16181d] sm:text-5xl">Turn a YouTube playlist into a knowledge base.</h1>
+            <p className="mt-4 max-w-xl text-base leading-7 text-[#60646c] sm:text-lg">Paste a playlist and ask questions about its videos, ideas, and moments.</p>
           </div>
-          <span className="text-xs font-medium uppercase tracking-[0.18em] text-[#1d2925]/60">Playlist intelligence</span>
-        </header>
-
-        <section className="grid flex-1 items-center gap-14 py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
-          <div>
-            <p className="mb-6 text-sm font-semibold uppercase tracking-[0.2em] text-[#e35f3f]">A clearer way to watch</p>
-            <h1 className="max-w-3xl text-5xl font-semibold leading-[0.98] tracking-[-0.04em] sm:text-7xl">
-              Turn a playlist into a conversation.
-            </h1>
-            <p className="mt-8 max-w-xl text-lg leading-8 text-[#1d2925]/70">
-              AskTube will help you explore the ideas, stories, and lessons inside any YouTube playlist, whatever the subject.
-            </p>
-          </div>
-
-          <div className="relative">
-            <div className="absolute -inset-4 rounded-[2rem] border border-[#e35f3f]/20" />
-            <div className="relative rounded-[1.5rem] bg-[#1d2925] p-7 text-[#f4f1ea] shadow-2xl shadow-[#1d2925]/15 sm:p-10">
-              <div className="mb-16 flex items-center justify-between">
-                <span className="text-sm font-medium text-[#f4f1ea]/60">Start with a playlist</span>
-                <span className="h-2 w-2 rounded-full bg-[#e35f3f]" />
+          <PlaylistInput value={playlistUrl} onChange={setPlaylistUrl} onPlaylistValidated={handlePlaylistValidated} />
+          <section className="mt-14 border-t border-[#e5e7eb] pt-8" aria-labelledby="empty-state-title">
+            <div className="grid gap-8 lg:grid-cols-[1.3fr_0.7fr] lg:items-center">
+              <div>
+                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#fff0f0] text-[#e32626]" aria-hidden="true">▶</div>
+                <h2 id="empty-state-title" className="text-2xl font-bold tracking-tight">Start with something worth exploring.</h2>
+                <p className="mt-3 max-w-xl leading-7 text-[#60646c]">AskTube keeps the videos in view while you explore the bigger picture. Answers will point back to the exact video and timestamp that matters.</p>
+                <div className="mt-6 flex flex-wrap gap-2 text-sm text-[#60646c]">
+                  <span className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2">Browse the playlist</span>
+                  <span className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2">Ask naturally</span>
+                  <span className="rounded-full border border-[#e5e7eb] bg-white px-3 py-2">Jump to the source</span>
+                </div>
               </div>
-              <label htmlFor="playlist-url" className="mb-3 block text-2xl font-medium tracking-tight">
-                YouTube playlist URL
-              </label>
-              <input
-                id="playlist-url"
-                type="url"
-                placeholder="Paste a playlist link here"
-                disabled
-                className="w-full border-b border-[#f4f1ea]/30 bg-transparent py-4 text-base text-[#f4f1ea] outline-none placeholder:text-[#f4f1ea]/35"
-              />
-              <button type="button" disabled className="mt-8 w-full rounded-full bg-[#e35f3f] px-5 py-4 text-sm font-semibold text-white opacity-60">
-                Coming in the next step
-              </button>
-              <p className="mt-5 text-xs leading-5 text-[#f4f1ea]/45">Playlist processing is not enabled in this foundation release.</p>
+              <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
+                <div className="mb-4 flex items-center justify-between text-xs font-bold uppercase tracking-[0.14em] text-[#9297a1]"><span>What you can ask</span><span className="h-2 w-2 rounded-full bg-[#e32626]" /></div>
+                <p className="border-b border-[#f0f1f3] pb-4 text-sm font-semibold">“Where does the speaker explain the core idea?”</p>
+                <p className="pt-4 text-sm font-semibold text-[#60646c]">“Compare the examples from videos 2 and 5.”</p>
+              </div>
             </div>
-          </div>
-        </section>
-
-        <footer className="border-t border-[#1d2925]/15 pt-5 text-xs text-[#1d2925]/50">
-          Built for curious minds, across every subject.
-        </footer>
-      </div>
-    </main>
+          </section>
+        </div>
+      )}
+      {view === "playlist" && <PlaylistView onOpenChat={() => setView("chat")} />}
+      {view === "chat" && <ChatWindow />}
+    </AppShell>
   );
 }
