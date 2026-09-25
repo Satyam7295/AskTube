@@ -2,12 +2,134 @@
 
 ## Implementation Summary
 
-AskTube now supports a clear two-path architecture:
 
-- Ingestion continues to fetch playlist metadata and videos from YouTube, transform them, and persist them to PostgreSQL.
-- Retrieval can now load a previously indexed playlist directly from PostgreSQL without issuing any YouTube API request.
+# AskTube
 
-The local database is treated as a reusable source for playlist metadata and ordered video records. The frontend continues to render the existing playlist experience while using a dedicated stored-playlist API client for database-backed reads.
+## Implementation Summary
+
+AskTube is a YouTube-inspired application for indexing playlists and retrieving their stored metadata and videos. Playlist ingestion validates a YouTube playlist ID, retrieves playlist metadata and paginated video metadata through the YouTube Data API v3, and persists the result idempotently in PostgreSQL. Stored playlist retrieval reads PostgreSQL directly and preserves video ordering without calling YouTube.
+
+AskTube now also provides synchronous YouTube video transcript extraction for a standalone stored video ID. Transcript data is retrieved through the dedicated transcript provider service, normalized without changing spoken content, and returned with numeric timestamps. Transcript data is not persisted or cached yet.
+
+## Completed Features
+
+- Project foundation
+- YouTube-inspired UI/UX
+- AskTube logo
+- Playlist URL validation
+- YouTube playlist metadata retrieval
+- YouTube playlist video retrieval
+- PostgreSQL persistence
+- PostgreSQL stored playlist retrieval
+- Transcript extraction
+
+## Current Architecture
+
+Frontend
+ ↓
+FastAPI
+ ↓
+Playlist/Video services
+ ↓
+ ┌──────────────────────────┬────────────────────┐
+ │                          │                    │
+YouTube metadata service  Transcript service  PostgreSQL
+ │                          │                    │
+Playlist/video ingestion  Transcript response  Stored playlists/videos
+ │                          │                    │
+ └──────────────────────────┴───────────────→ PostgreSQL
+
+Transcript extraction is deliberately separate from the YouTube playlist metadata service and from PostgreSQL persistence. The transcript service accepts a video ID, selects an available transcript deterministically, normalizes segment text, preserves numeric timing, and returns the response. No transcript tables or transcript cache exist.
+
+## Current API Endpoints
+
+- `GET /api/playlists/{playlist_id}`
+  - Retrieves playlist metadata and videos from the YouTube Data API and upserts them into PostgreSQL.
+- `GET /api/playlists/{playlist_id}/stored`
+  - Retrieves a previously indexed playlist and ordered videos from PostgreSQL only.
+- `GET /api/videos/{video_id}/transcript`
+  - Retrieves and normalizes transcript segments for a YouTube video.
+  - Optional `language` query parameter requests a preferred language.
+
+Transcript errors are controlled: invalid IDs return 422, unavailable videos and unavailable transcripts return 404, and provider failures return 502.
+
+## Transcript Contract
+
+The transcript response contains:
+
+- `video_id`: YouTube video ID.
+- `language`: provider language code, or `null` when unavailable.
+- `is_generated`: provider generated/manual metadata, or `null` when unavailable.
+- `segments`: ordered transcript segments.
+- Each segment contains `text`, numeric `start` seconds, and numeric `duration` seconds.
+- `total_segments`: number of returned segments.
+
+Text is trimmed and repeated whitespace is normalized. Meaningful punctuation, words, segment boundaries, and fractional timestamps are preserved.
+
+## Dependencies
+
+- `youtube-transcript-api>=1.2.3,<2.0.0` for transcript/caption retrieval.
+
+## Files Created
+
+- `backend/app/api/videos.py`
+- `backend/app/schemas/transcript.py`
+- `backend/app/services/transcript/__init__.py`
+- `backend/app/services/transcript/transcript_service.py`
+- `backend/tests/test_transcripts.py`
+- `frontend/lib/api/videos.ts`
+
+## Files Modified
+
+- `backend/requirements.txt`
+- `backend/app/main.py`
+- `implement.txt`
+
+## Testing
+
+Tests written:
+- 8 mocked transcript tests covering successful responses, fractional timestamps, normalization, unavailable transcripts, unavailable videos, provider errors, invalid IDs, language selection, generated/manual metadata, and service validation.
+- Existing persistence and stored retrieval tests remain unchanged.
+
+Tests passed:
+- Focused transcript suite: 8 passed.
+- Full backend suite: 21 passed.
+
+Tests failed:
+- None known.
+
+Build status:
+- Backend test/build verification: passed through the full 21-test suite.
+- Frontend TypeScript check: passed with `npx tsc --noEmit`.
+- Frontend production build: started but timed out after Next.js initialization in the local environment; not claimed as passing.
+- Live YouTube transcript retrieval was not used as automated test coverage; transcript tests use mocked provider responses.
+
+Known environment limitations:
+- PostgreSQL is required for live non-test backend usage; repository tests use SQLite fixtures.
+- The frontend production build has previously timed out in this local environment and must be verified again.
+
+## Known Issues
+
+- FastAPI startup uses the existing deprecated `on_event` pattern; this is unrelated to transcript extraction.
+- Transcript data is available only synchronously through the endpoint and is not persisted or cached.
+- A complete frontend transcript display has intentionally not been added.
+
+## Not Yet Implemented
+
+- Transcript persistence
+- Transcript caching
+- Time-aware chunking
+- Embeddings
+- Qdrant
+- Retrieval
+- Hybrid retrieval
+- Reranking
+- LLM
+- RAG
+- Grounded answers
+- Timestamp navigation
+- Conversation memory
+- Query rewriting
 
 ## Completed Features
 
