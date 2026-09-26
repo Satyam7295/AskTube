@@ -60,7 +60,7 @@ Expected response:
 }
 ```
 
-The backend starts without PostgreSQL or Qdrant configured. Future service configuration belongs in environment variables based on `.env.example`.
+The backend requires `DATABASE_URL` at startup because it initializes PostgreSQL persistence. Qdrant is configured separately through the environment variables documented in `.env.example`.
 
 Set `YOUTUBE_API_KEY` in `backend/.env` before loading a playlist. The key is used only by the backend; the frontend calls `GET /api/playlists/{playlist_id}`.
 

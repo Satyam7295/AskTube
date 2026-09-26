@@ -5,6 +5,7 @@ import { AppShell } from "../components/layout/AppShell";
 import { ChatWindow } from "../components/chat/ChatWindow";
 import { PlaylistInput } from "../components/playlist/PlaylistInput";
 import { PlaylistView } from "../components/playlist/PlaylistView";
+import { ingestPlaylist } from "../lib/api/playlists";
 import type { ValidatedPlaylist } from "../lib/youtube/playlistUrl";
 
 type View = "home" | "playlist" | "chat";
@@ -14,7 +15,8 @@ export default function Home() {
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [validatedPlaylist, setValidatedPlaylist] = useState<ValidatedPlaylist | null>(null);
 
-  function handlePlaylistValidated(playlist: ValidatedPlaylist) {
+  async function handlePlaylistValidated(playlist: ValidatedPlaylist) {
+    await ingestPlaylist(playlist.playlistId);
     setValidatedPlaylist(playlist);
     setView("playlist");
   }
@@ -51,7 +53,7 @@ export default function Home() {
         </div>
       )}
       {view === "playlist" && validatedPlaylist && <PlaylistView playlistId={validatedPlaylist.playlistId} onOpenChat={() => setView("chat")} />}
-      {view === "chat" && <ChatWindow />}
+      {view === "chat" && validatedPlaylist && <ChatWindow />}
     </AppShell>
   );
 }
