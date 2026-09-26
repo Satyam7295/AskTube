@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Sequence
 from math import isfinite
 from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 try:
     from qdrant_client import QdrantClient
@@ -221,6 +224,7 @@ class QdrantService:
                     with_payload=True,
                 )
         except Exception as error:
+            self._log_search_failure(error)
             raise QdrantSearchError("Qdrant vector search failed.") from error
 
         results: list[QdrantSearchResult] = []
@@ -234,3 +238,36 @@ class QdrantService:
                 raise QdrantSearchError("Qdrant returned a malformed similarity score.") from error
             results.append(QdrantSearchResult(getattr(point, "id", None), score, payload))
         return results
+
+    def _log_search_failure(self, error: Exception) -> None:
+        """Log a structured diagnostic for the search failure without exposing secrets."""
+        error_str = str(error)
+        collection = self.settings.qdrant_collection_name
+
+        if "404" in error_str and ("doesn't exist" in error_str or "Not found" in error_str):
+            logger.error(
+                "Qdrant search failed: collection '%s' does not exist. "
+                "Run POST /api/videos/{video_id}/embeddings then POST /api/videos/{video_id}/vectors "
+                "to generate embeddings and populate the collection before querying.",
+                collection,
+            )
+        elif "401" in error_str or "403" in error_str or "Unauthorized" in error_str or "Forbidden" in error_str:
+            logger.error(
+                "Qdrant search failed: authentication/authorization error for collection '%s'. "
+                "Check QDRANT_API_KEY in the backend environment. (detail suppressed)",
+                collection,
+            )
+        elif "Connection" in type(error).__name__ or "Timeout" in type(error).__name__ or "timeout" in error_str.lower():
+            logger.error(
+                "Qdrant search failed: could not connect to Qdrant at '%s'. "
+                "Check network access and QDRANT_URL. (detail suppressed)",
+                self.settings.qdrant_url,
+            )
+        else:
+            logger.error(
+                "Qdrant search failed for collection '%s': %s: %s",
+                collection,
+                type(error).__name__,
+                error_str,
+            )
+
