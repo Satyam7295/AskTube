@@ -115,6 +115,29 @@ def test_vector_validation_accepts_expected_dimension_and_rejects_invalid_values
         service.validate_vector([0.1, float("nan"), 0.2])
 
 
+def test_search_uses_modern_query_points_api(fake_client):
+    class ModernClient:
+        def __init__(self):
+            self.request = None
+
+        def query_points(self, **kwargs):
+            self.request = kwargs
+            return SimpleNamespace(
+                points=[SimpleNamespace(id=7, score=0.9, payload={"chunk_id": 7})]
+            )
+
+    settings = Settings(qdrant_url="http://localhost:6333", embedding_dimension=3)
+    client = ModernClient()
+    service = QdrantService(settings=settings, client=client)
+
+    results = service.search([0.1, 0.2, 0.3], limit=1)
+
+    assert results[0].point_id == 7
+    assert results[0].score == 0.9
+    assert client.request["query"] == [0.1, 0.2, 0.3]
+    assert client.request["with_payload"] is True
+
+
 def test_upsert_is_idempotent_for_same_chunks(fake_client):
     settings = Settings(qdrant_url="http://localhost:6333", qdrant_collection_name="asktube_chunks", embedding_dimension=384)
     service = QdrantService(settings=settings, client=fake_client)

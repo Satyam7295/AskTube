@@ -201,14 +201,25 @@ class QdrantService:
             query_filter = Filter(must=[FieldCondition(key="video_id", match=MatchValue(value=video_id))])
 
         try:
-            points = self.client.search(
-                collection_name=self.settings.qdrant_collection_name,
-                query_vector=query_vector,
-                query_filter=query_filter,
-                limit=limit,
-                score_threshold=score_threshold,
-                with_payload=True,
-            )
+            if hasattr(self.client, "query_points"):
+                response = self.client.query_points(
+                    collection_name=self.settings.qdrant_collection_name,
+                    query=query_vector,
+                    query_filter=query_filter,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                )
+                points = response.points
+            else:
+                points = self.client.search(
+                    collection_name=self.settings.qdrant_collection_name,
+                    query_vector=query_vector,
+                    query_filter=query_filter,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                )
         except Exception as error:
             raise QdrantSearchError("Qdrant vector search failed.") from error
 

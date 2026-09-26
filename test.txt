@@ -1,0 +1,891 @@
+# AskTube — Full End-to-End Feature Verification
+Perform a comprehensive verification of **everything implemented in AskTube so far**.
+
+This is a TEST/VERIFICATION task.
+
+## CRITICAL RULE
+Do NOT implement new product features.
+
+Do NOT refactor working code.
+
+Do NOT change architecture.
+
+Do NOT modify production behavior merely to make tests pass.
+
+Only make a code change if you discover a genuine defect required to fix the existing implementation. If you find a defect, document it clearly before/after the fix.
+
+The goal is to determine whether the current AskTube pipeline actually works from ingestion through grounded answer generation.
+
+---
+
+# 1. Current Expected Architecture
+Verify the complete pipeline:
+
+```
+YouTube Playlist
+      ↓
+Playlist / Video Metadata
+      ↓
+Transcript Extraction
+      ↓
+Transcript Persistence
+      ↓
+Chunking
+      ↓
+Embedding Generation
+      ↓
+Embedding Persistence
+      ↓
+Qdrant Synchronization
+      ↓
+Semantic Retrieval
+      ↓
+RAG Context Builder
+      ↓
+Groq LLM
+      ↓
+Grounded Answer
+      ↓
+Sources + Timestamps
+```
+Every implemented stage must be tested individually where appropriate AND as part of the integrated flow.
+
+---
+
+# 2. Inspect the Entire Repository First
+Before testing, inspect:
+
+### Backend
+
+- `main.py`
+- `config.py`
+- `videos.py`
+- transcript-related files
+- chunk-related files
+- `embedding.py`
+- `embedding_service.py`
+- `qdrant_service.py`
+- `search.py`
+- `retrieval_service.py`
+- `context.py`
+- `context_builder.py`
+- LLM/Groq implementation files
+- all backend tests
+- `requirements.txt`
+- `.env.example`
+
+### Frontend
+Inspect:
+
+- API client
+- AskTube UI
+- playlist ingestion flow
+- question/answer flow
+- loading states
+- error states
+- source/timestamp rendering
+- TypeScript configuration
+- Next.js configuration
+Do not assume the frontend is complete merely because TypeScript passes.
+
+---
+
+# 3. Run Existing Automated Tests
+Run the complete backend test suite:
+
+```
+python -m pytest -q
+```
+Record:
+
+- Total tests
+- Passed
+- Failed
+- Skipped
+- Warnings
+- Runtime
+Do NOT stop at individual feature tests.
+
+---
+
+# 4. Test Existing Feature Groups
+Verify that the test suite contains coverage for:
+
+### Playlist / Video
+
+- playlist ingestion
+- video persistence
+- duplicate handling
+- invalid playlist/video input
+- stored retrieval behavior
+
+### Transcript
+
+- transcript retrieval
+- transcript persistence
+- missing transcript handling
+- transcript metadata
+
+### Chunking
+
+- chunk creation
+- ordering
+- boundaries
+- metadata
+- deterministic behavior
+- empty transcript handling
+
+### Embeddings
+Verify:
+
+- real embedding model loads
+- 384 dimensions
+- finite values
+- normalization
+- deterministic repeated calls
+- semantic similarity
+- persistence
+- idempotence
+- model-change handling
+If the real model is not available, clearly report that instead of pretending the test was performed.
+
+---
+
+# 5. Test Qdrant Storage
+Verify:
+
+- collection configuration
+- collection name
+- 384 vector dimension
+- cosine distance
+- deterministic point IDs
+- payload structure
+- upsert behavior
+- idempotence
+- model/vector validation
+- malformed vector rejection
+- sync endpoint
+If a real Qdrant server is available, use it.
+
+Prefer a dedicated test collection.
+
+DO NOT delete or modify a user's existing production collection.
+
+If Qdrant is unavailable, run mocked tests and clearly report:
+
+```
+Real Qdrant integration: NOT VERIFIED
+```
+
+---
+
+# 6. Test Semantic Retrieval
+Verify:
+
+```
+Question
+   ↓
+Query Embedding
+   ↓
+Qdrant Search
+   ↓
+Top-K Results
+```
+Test:
+
+- valid query
+- empty query
+- whitespace query
+- invalid query
+- top_k
+- top_k limits
+- video filtering
+- score threshold
+- result ordering
+- empty results
+- malformed payload
+- Qdrant failure
+Perform at least one semantic relevance test.
+
+Example:
+
+```
+Chunk A:
+"React is a JavaScript library for building user interfaces."
+
+Chunk B:
+"PostgreSQL is a relational database."
+
+Question:
+"What is React used for?"
+```
+Verify React-related content ranks above unrelated PostgreSQL content.
+
+Do not hardcode exact similarity values.
+
+---
+
+# 7. Test RAG Context Builder
+Verify:
+
+- valid context creation
+- query preservation
+- source preservation
+- source metadata
+- relevance ordering
+- same-video chronological ordering
+- duplicate removal
+- overlap handling
+- maximum source limit
+- maximum context character limit
+- empty context
+- malformed result handling
+- deterministic output
+Verify that every transcript included in `context_text` maps back to an identifiable source.
+
+---
+
+# 8. Test Groq LLM Layer
+Without a real API key, use mocked Groq responses.
+
+Verify:
+
+```
+RAGContext
+   ↓
+LLMService
+   ↓
+Groq request
+   ↓
+Answer
+```
+Test:
+
+- valid generation
+- model configuration
+- context inclusion
+- question inclusion
+- grounded system instructions
+- transcript instructions treated as untrusted
+- empty context does NOT call Groq
+- provider failure
+- timeout
+- malformed response
+- missing API key
+- source preservation
+Verify that source metadata is taken from retrieval/context and NOT generated by the LLM.
+
+---
+
+# 9. Real Groq Test
+Check whether:
+
+```
+GROQ_API_KEY
+```
+is configured in the environment.
+
+If it is configured:
+
+Perform ONE controlled real API test using a small known context.
+
+Example:
+
+```
+Context:
+"React is a JavaScript library used to build user interfaces."
+
+Question:
+"What is React used for?"
+```
+Verify that Groq produces a grounded answer.
+
+Do not print the API key.
+
+Do not commit the key.
+
+Do not log credentials.
+
+If no key exists, report:
+
+```
+Real Groq integration: NOT VERIFIED
+```
+Do not mark this as a failure of the implementation.
+
+---
+
+# 10. Full Backend End-to-End Test
+This is the most important test.
+
+Use a controlled test dataset.
+
+If the environment allows real services, perform:
+
+```
+Test playlist/video
+       ↓
+Transcript
+       ↓
+Chunks
+       ↓
+Embeddings
+       ↓
+PostgreSQL
+       ↓
+Qdrant
+       ↓
+Question
+       ↓
+Retrieval
+       ↓
+Context
+       ↓
+Groq
+       ↓
+Answer
+```
+Do not bypass intermediate layers.
+
+Verify that the output from each stage is actually consumed by the next stage.
+
+---
+
+# 11. End-to-End Test Question
+Use a question whose answer is clearly present in the transcript.
+
+Example:
+
+```
+"What concept is explained in this part of the video?"
+```
+Use a known transcript where the answer is obvious.
+
+Verify:
+
+### Retrieval
+Relevant chunk is retrieved.
+
+### Context
+The relevant chunk appears in the context.
+
+### LLM
+The LLM receives that context.
+
+### Answer
+The final answer is supported by the transcript.
+
+### Sources
+The returned source corresponds to the actual retrieved chunk.
+
+### Timestamp
+The returned timestamp comes from stored metadata.
+
+---
+
+# 12. Grounding Verification
+Perform an explicit hallucination test.
+
+Use a context that says:
+
+```
+"React was created by Facebook."
+```
+Ask something unrelated that is NOT present in the context.
+
+For example:
+
+```
+"What year was React created?"
+```
+The system should NOT confidently invent an answer from outside knowledge.
+
+Expected behavior:
+
+```
+Insufficient information in the provided transcript context.
+```
+The exact wording may differ.
+
+The important behavior is that unsupported information is not fabricated.
+
+---
+
+# 13. Source Integrity Test
+Verify:
+
+```
+Retrieved chunk
+      ↓
+RAGContext source
+      ↓
+API response source
+```
+The following must remain unchanged:
+
+```
+chunk_id
+video_id
+start_time
+end_time
+score
+```
+The LLM must never be able to modify these values.
+
+---
+
+# 14. Idempotence Test
+Run the relevant operations more than once.
+
+Verify:
+
+### Embeddings
+Second execution does not unnecessarily regenerate existing embeddings.
+
+### Qdrant
+Second synchronization does not create duplicate points.
+
+### Retrieval
+Same query over unchanged data produces equivalent retrieval results.
+
+### Context
+Same retrieval input produces deterministic context.
+
+---
+
+# 15. Error Path Testing
+Test the major failure paths:
+
+### Invalid playlist
+Expected controlled error.
+
+### Missing transcript
+Expected controlled error.
+
+### Invalid video
+Expected controlled error.
+
+### Empty query
+Expected validation error.
+
+### Qdrant unavailable
+Expected safe service error.
+
+### Embedding failure
+Expected safe embedding error.
+
+### Groq unavailable
+Expected safe LLM/provider error.
+
+### Missing Groq API key
+Expected configuration error.
+
+### Empty retrieval
+Expected insufficient-context behavior.
+
+No stack traces, API keys, filesystem paths, database credentials, or internal implementation details should be exposed to the API client.
+
+---
+
+# 16. Frontend Verification
+Run:
+
+```
+npx tsc --noEmit
+```
+Then attempt:
+
+```
+npm run build
+```
+If the build stalls, investigate why.
+
+Do NOT automatically modify the frontend just because the build stalls.
+
+Determine whether:
+
+- process is actually still running
+- Next.js is waiting for something
+- a plugin/configuration is blocking it
+- memory/resource usage is abnormal
+- there is an existing unrelated problem
+If it cannot be resolved within the scope of this test, document it.
+
+---
+
+# 17. Frontend Functional Verification
+If the frontend can be launched, verify manually or through available tooling:
+
+### Playlist
+
+- User can provide playlist URL
+- Ingestion starts
+- Loading state appears
+- Errors are displayed cleanly
+- Successful ingestion is reflected in UI
+
+### Ask Question
+
+- User can enter a question
+- Request reaches backend
+- Loading state appears
+- Answer appears
+- Sources appear
+- Video/timestamp metadata is displayed correctly
+
+### Errors
+Verify UI behavior for:
+
+- invalid playlist
+- empty question
+- backend unavailable
+- no relevant results
+- Groq failure
+Do not claim manual browser verification if browser automation is unavailable.
+
+---
+
+# 18. Security Verification
+Check that:
+
+- `.env` is not committed
+- API keys are not hardcoded
+- Groq key is not returned by APIs
+- Qdrant key is not returned by APIs
+- secrets are not printed in logs
+- provider errors do not expose credentials
+- SQL/database errors do not expose sensitive internals
+- transcript content cannot override the system-level LLM instructions
+Also inspect:
+
+```
+git status
+git diff --check
+```
+Do not remove or overwrite unrelated user changes.
+
+---
+
+# 19. Dependency Verification
+Check that all required dependencies are declared.
+
+Verify:
+
+```
+sentence-transformers
+qdrant client
+Groq SDK
+FastAPI dependencies
+frontend dependencies
+```
+are represented correctly.
+
+Do not add duplicate dependencies.
+
+Do not upgrade unrelated packages.
+
+---
+
+# 20. Configuration Verification
+Verify all important environment variables:
+
+```
+DATABASE_URL
+QDRANT_URL
+QDRANT_API_KEY
+QDRANT_COLLECTION_NAME
+EMBEDDING_DIMENSION
+GROQ_API_KEY
+GROQ_MODEL
+RAG_MAX_CONTEXT_CHARS
+RAG_MAX_SOURCES
+RETRIEVAL_TOP_K
+```
+Check:
+
+- `.env.example`
+- `config.py`
+- README documentation
+for consistency.
+
+Do not expose real secrets.
+
+---
+
+# 21. API Contract Verification
+Inspect all implemented endpoints and verify:
+
+- request schema
+- response schema
+- validation
+- status codes
+- error responses
+- service boundaries
+Pay particular attention to:
+
+```
+POST /api/videos/{video_id}/embeddings
+POST /api/videos/{video_id}/vectors
+POST /api/search
+POST /api/ask
+```
+Use the actual endpoint names if the implementation differs.
+
+Verify that endpoints do not accidentally perform responsibilities belonging to another layer.
+
+---
+
+# 22. Architecture Integrity Check
+Verify that the system still follows:
+
+```
+API
+ ↓
+Service
+ ↓
+Repository / External Service
+```
+and that:
+
+- Qdrant logic remains isolated
+- embedding logic remains isolated
+- retrieval logic remains isolated
+- context construction remains isolated
+- LLM provider logic remains isolated
+Look specifically for accidental coupling such as:
+
+```
+LLM service → Qdrant directly
+LLM service → PostgreSQL directly
+Context builder → Groq
+Retrieval → Groq
+Qdrant service → LLM
+```
+These should NOT happen.
+
+---
+
+# 23. Performance Sanity Checks
+Measure where practical:
+
+- embedding generation
+- Qdrant synchronization
+- semantic retrieval
+- context construction
+- LLM request
+Do not perform large-scale load testing.
+
+The goal is only to identify obvious performance problems such as:
+
+- N+1 queries
+- embedding regeneration
+- repeated Qdrant connections
+- huge contexts
+- unnecessary LLM calls
+
+---
+
+# 24. Regression Check
+Run the complete backend suite:
+
+```
+python -m pytest -q
+```
+Run:
+
+```
+python -m compileall .
+```
+Run frontend:
+
+```
+npx tsc --noEmit
+npm run build
+```
+Run:
+
+```
+git diff --check
+```
+Record exact results.
+
+---
+
+# 25. Do Not Hide Failures
+If something fails:
+
+- identify the exact failure
+- determine whether it is implementation-related or environment-related
+- do not weaken tests
+- do not skip tests without explanation
+- do not claim success without evidence
+Distinguish:
+
+```
+PASS
+```
+from:
+
+```
+NOT VERIFIED
+```
+and:
+
+```
+FAIL
+```
+Example:
+
+```
+Real Qdrant integration: NOT VERIFIED
+Reason: Qdrant server unavailable.
+```
+That is different from:
+
+```
+Qdrant integration: FAILED
+Reason: connection attempted but implementation failed.
+```
+
+---
+
+# 26. Fix Genuine Bugs
+If a genuine implementation bug is discovered:
+
+1. Document the bug.
+2. Make the smallest appropriate fix.
+3. Add or update a regression test.
+4. Re-run the affected tests.
+5. Re-run the complete regression suite.
+Do not make unrelated improvements.
+
+At the end clearly list every production file changed during testing.
+
+---
+
+# 27. Final Verification Report
+Produce a detailed report with exactly these sections:
+
+## 1. Environment
+Include:
+
+- Python version
+- Node version
+- relevant package versions
+- database availability
+- Qdrant availability
+- Groq availability
+
+## 2. Feature Verification
+Create a table:
+
+```
+Feature                         Status
+------------------------------------------------
+Playlist ingestion              PASS/FAIL/NOT VERIFIED
+Video persistence               PASS/FAIL/NOT VERIFIED
+Transcript extraction           PASS/FAIL/NOT VERIFIED
+Transcript persistence          PASS/FAIL/NOT VERIFIED
+Chunking                         PASS/FAIL/NOT VERIFIED
+Embedding generation             PASS/FAIL/NOT VERIFIED
+Embedding persistence            PASS/FAIL/NOT VERIFIED
+Qdrant synchronization           PASS/FAIL/NOT VERIFIED
+Semantic retrieval               PASS/FAIL/NOT VERIFIED
+Context Builder                  PASS/FAIL/NOT VERIFIED
+Groq LLM generation              PASS/FAIL/NOT VERIFIED
+Grounded answering               PASS/FAIL/NOT VERIFIED
+Source traceability              PASS/FAIL/NOT VERIFIED
+Frontend TypeScript              PASS/FAIL/NOT VERIFIED
+Frontend production build        PASS/FAIL/NOT VERIFIED
+```
+
+## 3. Automated Tests
+Report:
+
+```
+Total:
+Passed:
+Failed:
+Skipped:
+Warnings:
+```
+Include the exact pytest command and result.
+
+## 4. End-to-End Test
+Describe:
+
+```
+Input
+→ ingestion
+→ transcript
+→ chunks
+→ embeddings
+→ Qdrant
+→ retrieval
+→ context
+→ Groq
+→ answer
+```
+State exactly which parts were genuinely executed.
+
+## 5. Grounding Test
+Report whether unsupported questions were correctly prevented from producing unsupported answers.
+
+## 6. Source Integrity
+Verify chunk/video/timestamp/score preservation.
+
+## 7. Error Handling
+List tested failure cases and outcomes.
+
+## 8. Security
+Report:
+
+- secret handling
+- logs
+- API responses
+- git status
+- dependency/configuration issues
+
+## 9. Issues Found
+Separate:
+
+### Fixed
+List genuine bugs fixed.
+
+### Remaining
+List unresolved issues.
+
+### Environment Limitations
+List things that could not be tested because of missing services/credentials/tools.
+
+## 10. Files Modified During Verification
+List every production/test file actually changed.
+
+## 11. Final Assessment
+Use exactly one:
+
+```
+FULLY VERIFIED
+```
+only if the complete end-to-end flow was actually executed successfully.
+
+Otherwise:
+
+```
+VERIFIED WITH LIMITATIONS
+```
+if the implementation is healthy but real services/credentials prevent complete verification.
+
+Use:
+
+```
+FAILURE REQUIRES FIX
+```
+if a genuine implementation defect prevents the core AskTube flow from working.
+
+## FINAL RULE
+This is a verification task, not a feature-development task.
+
+Do not add new functionality after the existing AskTube pipeline has been verified.
+
+Focus on finding the truth about the current implementation.
