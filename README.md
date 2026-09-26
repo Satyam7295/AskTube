@@ -1,243 +1,422 @@
-# AskTube
+AskTube
 
-AskTube is a monorepo foundation for a domain-agnostic conversational RAG application for YouTube playlists. It validates YouTube playlist URLs, retrieves playlist metadata and ordered videos through a FastAPI backend using the official YouTube Data API v3, persists structured YouTube transcripts in PostgreSQL, retrieves semantically relevant transcript chunks from Qdrant, and generates grounded answers with Groq.
+AskTube turns a YouTube playlist into a searchable, conversational knowledge base.
 
-## Structure
+Instead of manually searching through long playlists, AskTube lets you provide a YouTube playlist URL, ask questions in natural language, and get grounded answers with relevant videos and timestamps.
 
-- `frontend/`: Next.js, TypeScript, App Router, and Tailwind CSS frontend
-- `backend/`: FastAPI backend with modular application boundaries
+🎥 Advertisement Video
 
-## Prerequisites
+Watch the AskTube project advertisement:
+Advertisement Video — Google Drive https://drive.google.com/file/d/1mCa3-dMP50nsR5ZJSe0yUu7ndO4uORWd/view?usp=sharing
 
-- Node.js 20+
-- Python 3.11+
+📑 Pitch Deck
 
-## Frontend
+View the AskTube presentation:
+Pitch Deck — Slides https://canva.link/zh0b6bl4grzlsyx
 
-```powershell
+✨ Why AskTube?
+
+Finding one specific concept inside a long YouTube playlist can be frustrating.
+
+AskTube solves this by connecting the entire learning flow:
+
+YouTube Playlist → Videos → Transcripts → Chunks → Embeddings → Semantic Search → Grounded Answer
+
+You can ask questions such as:
+
+"Where is this concept explained?"
+
+"Which video covers this topic?"
+
+"Explain this using the content from the playlist."
+
+AskTube retrieves the most relevant parts of the playlist and uses them as context for generating an answer.
+
+🚀 Key Features
+
+📥 Playlist Ingestion
+
+Accepts a YouTube playlist URL.
+
+Extracts playlist and video metadata.
+
+Processes videos for searchable content.
+
+📝 Transcript Processing
+
+Retrieves video transcripts.
+
+Caches transcript data to avoid unnecessary repeated processing.
+
+Splits transcripts into timestamp-aware chunks.
+
+🔎 Semantic Search
+
+Converts transcript chunks into vector embeddings.
+
+Stores embeddings in Qdrant.
+
+Finds semantically relevant content instead of relying only on exact keyword matches.
+
+🤖 Grounded AI Answers
+
+Retrieves relevant context before generating an answer.
+
+Uses Groq for answer generation.
+
+Reduces unsupported responses by grounding the answer in retrieved playlist content.
+
+Handles insufficient context instead of pretending an answer exists.
+
+🎯 Source & Timestamp References
+
+Answers can point back to the relevant:
+
+Video
+
+Timestamp
+
+Retrieved content
+
+This makes it easier to continue learning directly from the original YouTube material.
+
+💬 Conversational Questions
+
+Ask follow-up questions naturally instead of restarting the search every time.
+
+🧠 How It Works
+
+                    YouTube Playlist
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │ Playlist / Video│
+                  │    Metadata     │
+                  └────────┬────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │   Transcripts   │
+                  └────────┬────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │ Timestamp-aware │
+                  │     Chunks      │
+                  └────────┬────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │   Embeddings    │
+                  └────────┬────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │ Qdrant Vector DB│
+                  └────────┬────────┘
+                           │
+                    User Question
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │Semantic Retrieval│
+                  │ + Context Ranking│
+                  └────────┬────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │  Groq LLM       │
+                  │ Grounded Answer  │
+                  └────────┬────────┘
+                           │
+                           ▼
+                  Answer + Sources
+                  + Video Timestamps
+
+🏗️ Architecture
+
+┌───────────────────────────────────────────────┐
+│                 Frontend                      │
+│        Next.js + React + TypeScript           │
+│                  Tailwind                     │
+└──────────────────────┬────────────────────────┘
+                       │
+                       │ HTTP API
+                       ▼
+┌───────────────────────────────────────────────┐
+│                  Backend                      │
+│              Python + FastAPI                 │
+│        Pydantic + SQLAlchemy                  │
+└───────────────┬───────────────┬───────────────┘
+                │               │
+                ▼               ▼
+        ┌──────────────┐   ┌──────────────┐
+        │ PostgreSQL   │   │    Qdrant    │
+        │ Source of    │   │ Vector Search│
+        │ Truth        │   │              │
+        └──────────────┘   └──────┬───────┘
+                                  │
+                                  ▼
+                         Semantic Retrieval
+                                  │
+                                  ▼
+                            ┌───────────┐
+                            │   Groq    │
+                            │    LLM    │
+                            └───────────┘
+
+🧩 RAG Pipeline
+
+AskTube follows a retrieval-augmented generation approach:
+
+Ingest the YouTube playlist.
+
+Extract video metadata.
+
+Retrieve and cache transcripts.
+
+Chunk transcript content while preserving timestamps.
+
+Generate embeddings for each chunk.
+
+Store vectors in Qdrant.
+
+Embed the user's question.
+
+Retrieve semantically relevant chunks.
+
+Validate, deduplicate, rank, and bound the retrieved context.
+
+Generate a grounded response using Groq.
+
+Return the answer together with relevant video/timestamp references.
+
+🛠️ Tech Stack
+
+Layer
+
+Technology
+
+Frontend
+
+Next.js, React, TypeScript, Tailwind CSS
+
+Backend
+
+Python, FastAPI
+
+API Validation
+
+Pydantic
+
+ORM
+
+SQLAlchemy
+
+Relational Database
+
+PostgreSQL
+
+Vector Database
+
+Qdrant
+
+Video Source
+
+YouTube
+
+Embeddings
+
+all-MiniLM-L6-v2
+
+LLM
+
+Groq
+
+Architecture
+
+Retrieval-Augmented Generation (RAG)
+
+📁 Project Structure
+
+AskTube/
+│
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   └── ...
+│
+├── backend/
+│   ├── api/
+│   ├── services/
+│   ├── models/
+│   ├── retrieval/
+│   └── ...
+│
+├── docker-compose.yml
+├── .env.example
+└── README.md
+
+⚙️ Getting Started
+
+1. Clone the repository
+
+git clone <YOUR_REPOSITORY_URL>
+cd AskTube
+
+2. Configure environment variables
+
+Create the required environment files using the provided examples.
+
+cp .env.example .env
+
+Configure the required services and credentials, including the database, Qdrant, YouTube/transcript access, and Groq.
+
+3. Start infrastructure
+
+docker compose up -d
+
+This starts the required local infrastructure such as PostgreSQL and Qdrant.
+
+4. Start the backend
+
+cd backend
+# install dependencies according to the project configuration
+# start the FastAPI application
+
+5. Start the frontend
+
 cd frontend
 npm install
 npm run dev
-```
 
-Open `http://localhost:3000`.
+Open the local development URL shown by Next.js.
 
-To create a production build:
+Note: Exact setup commands may evolve as the project develops. Check the project configuration files for the current dependency and startup commands.
 
-```powershell
-cd frontend
-npm run build
-```
+🔐 Environment Variables
 
-## Backend
+AskTube uses environment variables for external services and infrastructure configuration.
 
-Create and activate a virtual environment, then install the dependencies:
+Typical configuration includes:
 
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
-
-Start the API:
-
-```powershell
-uvicorn app.main:app --reload --port 8000
-```
-
-Test the health endpoint:
-
-```powershell
-Invoke-RestMethod http://localhost:8000/api/health
-```
-
-Expected response:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-The backend requires `DATABASE_URL` at startup because it initializes PostgreSQL persistence. Qdrant is configured separately through the environment variables documented in `.env.example`.
-
-Set `YOUTUBE_API_KEY` in `backend/.env` before loading a playlist. The key is used only by the backend; the frontend calls `GET /api/playlists/{playlist_id}`.
-
-## Grounded Answers with Groq
-
-AskTube retrieves transcript chunks and bounds them with the RAG context builder before sending one request to Groq. The LLM receives only the question and formatted transcript context; it does not perform retrieval or generate source metadata.
-
-Add these settings to `backend/.env`:
-
-```env
-GROQ_API_KEY=
-GROQ_MODEL=llama-3.3-70b-versatile
-```
-
-`GROQ_API_KEY` is required when retrieved context exists and is never returned or logged. `GROQ_MODEL` is configurable; the documented default can be changed without changing application code.
-
-Ask a question with the existing retrieval options:
-
-```http
-POST /api/ask
-Content-Type: application/json
-
-{
-  "query": "What is database normalization?",
-  "top_k": 5
-}
-```
-
-The response preserves source metadata from retrieval and context building:
-
-```json
-{
-  "query": "What is database normalization?",
-  "answer": "Normalization reduces repeated data in relational tables.",
-  "provider": "groq",
-  "model": "llama-3.3-70b-versatile",
-  "insufficient_context": false,
-  "sources": [
-    {
-      "chunk_id": 42,
-      "video_id": "dQw4w9WgXcQ",
-      "score": 0.84,
-      "text": "...",
-      "start_time": 120.5,
-      "end_time": 145.2,
-      "chunk_index": 7
-    }
-  ]
-}
-```
-
-When no transcript sources are retrieved, AskTube returns a controlled insufficient-context answer without calling Groq. The model is instructed to use only transcript context, reject instructions embedded in transcript text, and acknowledge when the context does not support an answer.
-
-## Qdrant Vector Storage
-
-Qdrant is used as a storage layer for transcript chunk embeddings that will support future semantic retrieval. AskTube keeps PostgreSQL as the source of truth for transcript and chunk metadata, while Qdrant stores vectors and chunk payloads for later retrieval workflows.
-
-### Environment variables
-
-Add the following to `backend/.env`:
-
-```env
 DATABASE_URL=
+
+QDRANT_URL=
+
+GROQ_API_KEY=
+GROQ_MODEL=
+
 YOUTUBE_API_KEY=
-QDRANT_URL=http://localhost:6333
-QDRANT_API_KEY=
-QDRANT_COLLECTION_NAME=asktube_chunks
-EMBEDDING_DIMENSION=384
-```
 
-- `QDRANT_URL` is required for local or cloud deployment.
-- `QDRANT_API_KEY` is optional for local Qdrant and required for Qdrant Cloud.
-- `QDRANT_COLLECTION_NAME` defaults to `asktube_chunks`.
-- `EMBEDDING_DIMENSION` must stay aligned with the configured embedding model.
+Never commit real API keys or secrets to the repository.
 
-### Local setup
+🧪 Testing & Verification
 
-A local Qdrant instance can be started with Docker:
+The project includes checks for important parts of the pipeline, including:
 
-```powershell
-docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
-```
+Backend health
 
-The AskTube backend creates the collection automatically when a sync request is made.
+Database connectivity
 
-### Collection configuration
+Qdrant connectivity
 
-The Qdrant collection uses the configured embedding dimension and cosine distance:
+Embedding generation
 
-- Model: `sentence-transformers/all-MiniLM-L6-v2`
-- Dimension: `384`
-- Distance: `COSINE`
+Retrieval pipeline
 
-The collection configuration is driven from backend settings rather than a hardcoded value so the embedding model can be changed safely later.
+LLM integration
 
-### Synchronization flow
+API behavior
 
-Use the stored transcript chunk embeddings already persisted in PostgreSQL and synchronize them into Qdrant:
+Context validation
 
-```http
-POST /api/videos/{video_id}/vectors
-```
+For development, verify each service independently before testing the complete RAG flow.
 
-Example flow:
+📌 Current Status
 
-1. Validate the video ID.
-2. Load stored transcript chunks for that video.
-3. Decode each saved embedding.
-4. Validate vector dimensionality and metadata.
-5. Upsert payloads into Qdrant with deterministic point IDs.
-6. Return the number of chunks upserted and skipped.
+AskTube is being developed incrementally, with the core foundation and major RAG components being implemented and verified feature by feature.
 
-This sync layer is storage-only. Semantic retrieval uses the existing embeddings and Qdrant payloads without loading all chunks from PostgreSQL.
+Current implemented areas include:
 
-## Semantic Retrieval
+Playlist ingestion flow
 
-Search the indexed transcript chunks with the existing embedding model and Qdrant cosine similarity search:
+Transcript processing/caching
 
-```http
-POST /api/search
-Content-Type: application/json
+Text chunking
 
-{
-  "query": "What is database normalization?",
-  "top_k": 5,
-  "video_id": "dQw4w9WgXcQ",
-  "score_threshold": 0.5
-}
-```
+Embedding generation
 
-`query` is required. `top_k` defaults to `RETRIEVAL_TOP_K` (5) and is capped by `RETRIEVAL_MAX_TOP_K` (100). `video_id` restricts search to one YouTube video, while `score_threshold` is optional and uses Qdrant's cosine score filtering. Omit either optional field for global search or unthresholded top-k results.
+Qdrant vector storage
 
-The response contains the normalized query, result count, and source metadata including chunk ID, video ID, similarity score, transcript text, timestamps, chunk index, language, and available segment/count metadata:
+Semantic retrieval
 
-```json
-{
-  "query": "What is database normalization?",
-  "result_count": 1,
-  "results": [
-    {
-      "chunk_id": 42,
-      "video_id": "dQw4w9WgXcQ",
-      "score": 0.84,
-      "text": "...",
-      "start_time": 120.5,
-      "end_time": 145.2,
-      "chunk_index": 7,
-      "language_code": "en"
-    }
-  ]
-}
-```
+Context validation and ranking
 
-The search endpoint returns retrieval results only. The `/api/ask` endpoint adds answer generation after retrieval and context building.
+Groq-based answer generation
 
-## RAG Context Builder
+Source and timestamp-aware answers
 
-The internal context builder converts retrieval results into a deterministic, bounded `RAGContext` for the LLM layer:
+Insufficient-context handling
 
-```text
-Question
-  ↓
-Embedding
-  ↓
-Qdrant Retrieval
-  ↓
-Retrieved Chunks
-  ↓
-RAG Context Builder
-  ↓
-Groq LLM
-  ↓
-Grounded Answer
-```
+Some integration and environment-dependent functionality may require local configuration and service availability.
 
-It validates chunk metadata, removes duplicate chunk identities and exact repeated transcript text within a video, preserves source and timestamp metadata, and formats traceable plain text. Video groups are ordered by their best relevance score; chunks inside a group are chronological. Context is limited by `RAG_MAX_CONTEXT_CHARS` (default `12000`) and `RAG_MAX_SOURCES` (default `5`). The builder performs no database, Qdrant, embedding, network, or LLM calls and does not generate answers or citations.
+🎯 Project Goal
 
-## Implementation Summary
+The goal of AskTube is simple:
 
-AskTube validates YouTube playlist URLs locally, then retrieves playlist metadata and all ordered playlist videos through the backend. Pagination, API errors, loading, empty, and failure states are handled. Playlist and transcript database persistence are implemented. Transcript chunk embeddings use the local `sentence-transformers/all-MiniLM-L6-v2` model by default, with `EMBEDDING_MODEL`, `EMBEDDING_NORMALIZE`, and `EMBEDDING_BATCH_SIZE` configurable through the backend environment. The model produces 384-dimensional normalized vectors for cosine-similarity retrieval. Stored vectors remain in PostgreSQL metadata fields for persistence, and Qdrant stores corresponding vectors and payload metadata for semantic retrieval. `/api/ask` passes bounded retrieved transcript context to the configurable Groq model and returns a grounded answer with the original source metadata.
+Turn passive YouTube playlists into interactive, searchable learning experiences.
+
+Instead of asking:
+
+"Which of these 50 videos contains what I need?"
+
+AskTube lets you ask:
+
+"Where is this explained?"
+
+and navigate directly to the relevant content.
+
+🔮 Future Improvements
+
+Potential improvements include:
+
+Better hybrid retrieval
+
+Improved reranking
+
+More accurate timestamp extraction
+
+Conversation memory improvements
+
+Faster playlist indexing
+
+Streaming AI responses
+
+Better source visualization
+
+Improved error handling and observability
+
+Support for larger playlists and more content sources
+
+🤝 Contributing
+
+Contributions, suggestions, and improvements are welcome.
+
+Fork the repository.
+
+Create a feature branch.
+
+Make your changes.
+
+Test your changes.
+
+Open a pull request.
+
+📄 License
+
+Add the project's chosen license here.
+
+👨‍💻 Built With
+
+AskTube was built to explore how YouTube educational content can be transformed into a searchable and conversational knowledge base using RAG, semantic search, vector databases, and LLMs.
