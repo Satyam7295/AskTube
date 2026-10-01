@@ -12,6 +12,7 @@ class TranscriptChunk(Base):
     __tablename__ = "transcript_chunks"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    playlist_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     video_id: Mapped[str] = mapped_column(String(11), nullable=False, index=True)
     language_code: Mapped[str] = mapped_column(String(16), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -31,5 +32,11 @@ class TranscriptChunk(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("video_id", "language_code", "chunk_index", name="uq_transcript_chunks_video_language_index"),
+        UniqueConstraint(
+            "playlist_id",
+            "video_id",
+            "language_code",
+            "chunk_index",
+            name="uq_transcript_chunks_playlist_video_language_index",
+        ),
     )

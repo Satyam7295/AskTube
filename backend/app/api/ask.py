@@ -15,7 +15,11 @@ router = APIRouter(prefix="/api/ask", tags=["ask"])
 def ask_question(request: SearchRequest) -> AskResponse:
     try:
         query, results = RetrievalService().retrieve(
-            request.query, request.top_k, request.video_id, request.score_threshold
+            request.query,
+            request.top_k,
+            request.video_id,
+            request.score_threshold,
+            request.playlist_id,
         )
         context = ContextBuilder().build(query, results)
         answer = LLMService().generate_answer(context)

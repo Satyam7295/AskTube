@@ -36,11 +36,11 @@ export type AskResponse = {
   insufficient_context: boolean;
 };
 
-export async function askQuestion(query: string, signal?: AbortSignal): Promise<AskResponse> {
+export async function askQuestion(query: string, playlistId?: string, signal?: AbortSignal): Promise<AskResponse> {
   const response = await fetch(`${apiUrl}/api/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, playlist_id: playlistId ?? null }),
     signal,
   });
   const body = await response.json().catch(() => null);

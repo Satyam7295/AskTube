@@ -7,12 +7,14 @@ class SearchRequest(BaseModel):
     query: StrictStr
     top_k: StrictInt | None = Field(default=None, gt=0)
     video_id: StrictStr | None = None
+    playlist_id: StrictStr | None = None
     score_threshold: StrictFloat | None = Field(default=None, ge=-1, le=1)
 
 
 class SearchResult(BaseModel):
     chunk_id: int
     video_id: str
+    playlist_id: str | None = None
     score: float
     text: str
     start_time: float

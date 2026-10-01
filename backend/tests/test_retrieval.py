@@ -33,8 +33,12 @@ class FakeQdrantClient:
         self.last_filter = query_filter
         candidates = self.points
         if query_filter is not None:
-            video_id = query_filter.must[0].match.value
-            candidates = [point for point in candidates if point.payload["video_id"] == video_id]
+            for condition in query_filter.must:
+                key = condition.key
+                value = condition.match.value
+                candidates = [
+                    point for point in candidates if point.payload.get(key) == value
+                ]
         scored = []
         for point in candidates:
             score = sum(left * right for left, right in zip(query_vector, point.vector))
@@ -57,7 +61,7 @@ def make_service(points):
     return RetrievalService(embedding, qdrant), client
 
 
-def point(point_id, video_id, text):
+def point(point_id, video_id, text, playlist_id="PL_TEST_A"):
     embedding = EmbeddingService(model_name="test", model=FakeEmbeddingModel(), normalize=True).embed_text(text)
     return SimpleNamespace(
         id=point_id,
@@ -65,6 +69,7 @@ def point(point_id, video_id, text):
         payload={
             "chunk_id": point_id,
             "video_id": video_id,
+            "playlist_id": playlist_id,
             "language_code": "en",
             "chunk_index": point_id,
             "text": text,
@@ -117,6 +122,16 @@ def test_top_k_and_video_filter_are_applied_by_qdrant(retrieval):
         service.retrieve("question", top_k=-1)
     with pytest.raises(RetrievalInputError):
         service.retrieve("question", top_k=11)
+
+
+def test_playlist_filter_is_applied_by_qdrant(retrieval):
+    service, client = retrieval
+    _, results = service.retrieve("What is React used for?", playlist_id="PL_TEST_A")
+
+    assert len(results) == 3
+    assert client.last_filter.must[0].key == "playlist_id"
+    assert client.last_filter.must[0].match.value == "PL_TEST_A"
+    assert {result.video_id for result in results} == {VIDEO_A, VIDEO_B}
 
 
 def test_results_are_ranked_and_thresholded(retrieval):

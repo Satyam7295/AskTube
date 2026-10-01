@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.database import DatabaseConfigurationError, get_session_factory
 from app.models.chunk import TranscriptChunk
 from app.models.transcript import Transcript
+from app.models.video import Video
 
 
 class TranscriptDatabaseError(Exception):
@@ -59,15 +60,29 @@ class TranscriptRepository:
         except (DatabaseConfigurationError, SQLAlchemyError) as error:
             raise TranscriptDatabaseError("Transcript database write failed.") from error
 
-    def replace_chunks(self, video_id: str, language_code: str, chunks: list[dict]) -> list[TranscriptChunk]:
+    def get_video_playlist_id(self, video_id: str) -> str | None:
+        try:
+            with self.session_factory() as session:
+                record = session.query(Video).filter(Video.video_id == video_id).order_by(Video.position.asc()).first()
+                return None if record is None else record.playlist_id
+        except (DatabaseConfigurationError, SQLAlchemyError) as error:
+            raise TranscriptDatabaseError("Transcript playlist lookup failed.") from error
+
+    def replace_chunks(self, video_id: str, language_code: str, chunks: list[dict], playlist_id: str | None = None) -> list[TranscriptChunk]:
         try:
             with self.session_factory() as session:
                 with session.begin():
+                    if playlist_id is None:
+                        playlist_id = session.query(Video).filter(Video.video_id == video_id).value(Video.playlist_id)
                     session.query(TranscriptChunk).filter(
                         TranscriptChunk.video_id == video_id,
                         TranscriptChunk.language_code == language_code,
                     ).delete(synchronize_session=False)
-                    stored = [TranscriptChunk(**chunk) for chunk in chunks]
+                    stored = []
+                    for chunk in chunks:
+                        payload = dict(chunk)
+                        payload.setdefault("playlist_id", playlist_id)
+                        stored.append(TranscriptChunk(**payload))
                     session.add_all(stored)
                     session.flush()
                     return stored

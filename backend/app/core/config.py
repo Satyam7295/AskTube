@@ -5,6 +5,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "AskTube API"
+    cors_allowed_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:3015",
+    ]
     database_url: str | None = None
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None

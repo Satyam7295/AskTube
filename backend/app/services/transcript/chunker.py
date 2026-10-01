@@ -22,7 +22,7 @@ class TranscriptChunker:
     def __init__(self, config: ChunkingConfig | None = None) -> None:
         self.config = config or ChunkingConfig()
 
-    def chunk(self, video_id: str, language_code: str, segments: Sequence[Any]) -> list[dict[str, Any]]:
+    def chunk(self, video_id: str, language_code: str, segments: Sequence[Any], playlist_id: str | None = None) -> list[dict[str, Any]]:
         normalized = [self._normalize_segment(segment) for segment in segments]
         chunks: list[dict[str, Any]] = []
         start_index = 0
@@ -38,7 +38,9 @@ class TranscriptChunker:
                 end_index += 1
 
             included = normalized[start_index:end_index]
-            chunks.append(self._build_chunk(video_id, language_code, len(chunks), start_index, end_index, included))
+            chunks.append(
+                self._build_chunk(video_id, language_code, len(chunks), start_index, end_index, included, playlist_id)
+            )
             if end_index == len(normalized):
                 break
 
@@ -81,12 +83,14 @@ class TranscriptChunker:
         start_index: int,
         end_index: int,
         segments: Sequence[dict[str, Any]],
+        playlist_id: str | None = None,
     ) -> dict[str, Any]:
         text = " ".join(segment["text"] for segment in segments).strip()
         first = segments[0]
         last = segments[-1]
         return {
             "video_id": video_id,
+            "playlist_id": playlist_id,
             "language_code": language_code,
             "chunk_index": chunk_index,
             "text": text,

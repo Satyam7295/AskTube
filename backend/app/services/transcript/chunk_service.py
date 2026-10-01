@@ -18,8 +18,9 @@ class TranscriptChunkService:
             raise TranscriptNotAvailableError("Transcript is not available for this video.")
 
         language_code = stored.language_code
-        generated = self.chunker.chunk(video_id, language_code, stored.segments)
-        persisted = self.transcript_repository.replace_chunks(video_id, language_code, generated)
+        playlist_id = self.transcript_repository.get_video_playlist_id(video_id)
+        generated = self.chunker.chunk(video_id, language_code, stored.segments, playlist_id)
+        persisted = self.transcript_repository.replace_chunks(video_id, language_code, generated, playlist_id)
         chunks = [TranscriptChunk.model_validate(chunk, from_attributes=True) for chunk in persisted]
         return TranscriptChunkResponse(
             video_id=video_id,

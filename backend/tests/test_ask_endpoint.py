@@ -128,13 +128,14 @@ def test_ask_returns_answer_when_pipeline_succeeds():
         fake_ctx.sources = [fake_source]
         mc.return_value.build.return_value = fake_ctx
         ml.return_value.generate_answer.return_value = fake_answer
-        response = TestClient(app).post("/api/ask", json={"query": "What is Python?"})
+        response = TestClient(app).post("/api/ask", json={"query": "What is Python?", "playlist_id": "PL_TEST_123"})
     assert response.status_code == 200
     body = response.json()
     assert body["query"] == "What is Python?"
     assert "Python" in body["answer"]
     assert body["sources"][0]["chunk_id"] == 1
     assert body["insufficient_context"] is False
+    mr.return_value.retrieve.assert_called_once_with("What is Python?", None, None, None, "PL_TEST_123")
 
 
 def test_ask_returns_503_when_llm_not_configured():

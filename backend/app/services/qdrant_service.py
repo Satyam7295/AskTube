@@ -100,9 +100,11 @@ class QdrantService:
         return int(chunk_id)
 
     def build_point(self, chunk: Any, vector: Sequence[float]) -> dict[str, Any]:
+        playlist_id = getattr(chunk, "playlist_id", None)
         payload = {
             "chunk_id": int(getattr(chunk, "id")),
             "video_id": getattr(chunk, "video_id"),
+            "playlist_id": str(playlist_id) if playlist_id is not None else None,
             "language_code": getattr(chunk, "language_code", "en"),
             "chunk_index": int(getattr(chunk, "chunk_index", 0)),
             "text": getattr(chunk, "text", ""),
@@ -192,16 +194,24 @@ class QdrantService:
         limit: int,
         video_id: str | None = None,
         score_threshold: float | None = None,
+        playlist_id: str | None = None,
     ) -> list[QdrantSearchResult]:
         query_vector = self.validate_vector(vector)
         if limit < 1:
             raise QdrantVectorValidationError("Search limit must be positive.")
 
         query_filter = None
+        must_conditions: list[Any] = []
         if video_id is not None:
             if Filter is None or FieldCondition is None or MatchValue is None:
                 raise QdrantConfigurationError("Qdrant client dependency is not installed.")
-            query_filter = Filter(must=[FieldCondition(key="video_id", match=MatchValue(value=video_id))])
+            must_conditions.append(FieldCondition(key="video_id", match=MatchValue(value=video_id)))
+        if playlist_id is not None:
+            if Filter is None or FieldCondition is None or MatchValue is None:
+                raise QdrantConfigurationError("Qdrant client dependency is not installed.")
+            must_conditions.append(FieldCondition(key="playlist_id", match=MatchValue(value=playlist_id)))
+        if must_conditions:
+            query_filter = Filter(must=must_conditions)
 
         try:
             if hasattr(self.client, "query_points"):
