@@ -1,0 +1,580 @@
+ASKTUBE - COMPLETE PROJECT HANDOFF / SLIDE CONTENT
+====================================================
+
+Document purpose
+----------------
+This document is the single presentation-ready handoff from the user problem to the developer implementation. It captures the product idea, user experience, architecture, data flow, API contract, technology choices, trade-offs, current status, setup, testing, risks, and next steps.
+
+Status legend
+-------------
+IMPLEMENTED  = present in the repository and covered by the current implementation/tests.
+PARTIALLY SURFACED = supported by backend code but not fully exposed in the current frontend workflow.
+PLANNED = identified next work; do not describe it as complete.
+
+1. PRODUCT IN ONE SENTENCE
+---------------------------
+AskTube turns a YouTube playlist into a searchable, conversational knowledge base. A user supplies a playlist, AskTube indexes its metadata and transcripts, finds the most relevant transcript passages, and returns a grounded answer with source video and timestamp information.
+
+2. USER PROBLEM
+----------------
+Long educational, technical, interview, or research playlists contain useful knowledge but are difficult to search conversationally. A user normally has to:
+- Open videos one by one.
+- Scrub through timelines manually.
+- Remember which video contained an idea.
+- Compare explanations across multiple videos.
+- Risk receiving an answer without knowing its source.
+
+AskTube reduces that friction by making the playlist the knowledge boundary and returning evidence alongside the answer.
+
+3. TARGET USER EXPERIENCE
+-------------------------
+Primary user journey:
+1. Open AskTube.
+2. Paste a YouTube playlist URL.
+3. The client validates the URL and extracts the playlist ID.
+4. The backend retrieves playlist metadata and ordered videos from YouTube.
+5. The backend persists the playlist and videos in PostgreSQL.
+6. The user browses the playlist.
+7. Transcript data is fetched and cached for videos as needed.
+8. Transcript text is split into timestamped chunks.
+9. Chunks are embedded and synchronized to Qdrant.
+10. The user asks a natural-language question.
+11. The query is embedded and matched against transcript chunks.
+12. Retrieved chunks are validated, deduplicated, ordered, and bounded.
+13. Groq receives only the user question and selected transcript context.
+14. The answer is returned with source metadata and timestamps.
+15. The user can use the source timestamp to navigate back to the relevant video moment.
+
+Example questions:
+- Where does the speaker explain the core idea?
+- What is database normalization?
+- Compare the examples from videos 2 and 5.
+- Which video discusses the trade-off between consistency and availability?
+
+4. PRODUCT VALUE
+----------------
+- Faster discovery: search the meaning of a playlist rather than exact words.
+- Better trust: answers retain source video, chunk, relevance, and timestamp metadata.
+- Better learning: users can move from a concise answer back to the original explanation.
+- Playlist scope: the knowledge base is bounded by the content the user selected.
+- Reusable indexing: stored metadata, transcripts, chunks, and vectors avoid repeating expensive work.
+
+5. CURRENT FRONTEND
+-------------------
+Technology:
+- Next.js 15 with App Router.
+- React 19 and TypeScript.
+- Tailwind CSS 4.
+- lucide-react icons.
+- react-markdown is available for rendered answers.
+
+Current UI structure:
+- AppShell: overall application layout and navigation.
+- Header: top-level branding/navigation.
+- Sidebar: application navigation.
+- PlaylistInput: URL entry and client-side playlist validation.
+- PlaylistView: indexed playlist and video presentation.
+- ChatWindow: chat surface for questions.
+
+Current page states:
+- home: introduction and playlist input.
+- playlist: indexed playlist view.
+- chat: question/answer view after a playlist has been selected.
+
+Current frontend behavior:
+- The home page accepts a playlist URL.
+- A validated playlist triggers the playlist ingestion API.
+- The selected playlist is held in client state.
+- The shell can navigate between home, playlist, and chat views.
+
+Frontend limitation to communicate accurately:
+- The backend supports transcript, embedding, vector search, and grounded answer operations, but the complete transcript ingestion/indexing workflow and timestamp navigation are not yet fully represented in the visible frontend flow.
+
+6. BACKEND ARCHITECTURE
+-----------------------
+Layered request path:
+
+Browser / Next.js
+        |
+        v
+FastAPI routers and Pydantic schemas
+        |
+        v
+Application services
+        |
+        +--> YouTube Data API v3 for playlist metadata/videos
+        +--> YouTube transcript provider for captions
+        +--> PostgreSQL via SQLAlchemy for durable state
+        +--> sentence-transformers for local embeddings
+        +--> Qdrant for vector search/indexing
+        +--> Groq for grounded answer generation
+
+Backend modules:
+- app/main.py: FastAPI application, CORS, startup database initialization, router registration.
+- app/api/: HTTP routes and error-to-status-code translation.
+- app/core/config.py: environment-backed settings and defaults.
+- app/db/: SQLAlchemy base, engine, sessions, initialization.
+- app/models/: database entities for playlists, videos, transcripts, and chunks.
+- app/repositories/: database reads/writes; repositories do not contain YouTube logic.
+- app/schemas/: request/response contracts and validation models.
+- app/services/: application orchestration and integrations.
+- app/services/youtube/: YouTube playlist ingestion.
+- app/services/transcript/: transcript retrieval and transcript chunking.
+- app/services/embedding_service.py: local embedding model loading and vector generation.
+- app/services/qdrant_service.py: collection management, vector upsert, and vector search.
+- app/services/retrieval_service.py: query validation, query embedding, Qdrant search, payload mapping.
+- app/services/context_builder.py: deterministic RAG context construction.
+- app/services/llm_service.py: Groq client and grounded prompt execution.
+
+7. REQUEST AND DATA FLOWS
+-------------------------
+A. Playlist ingestion
+Playlist URL
+  -> client-side URL validation
+  -> playlist ID
+  -> GET /api/playlists/{playlist_id}
+  -> YouTube playlist metadata request
+  -> paginated YouTube video metadata requests
+  -> PostgreSQL upsert
+  -> ordered playlist response
+  -> frontend playlist view
+
+B. Stored playlist retrieval
+Playlist ID
+  -> GET /api/playlists/{playlist_id}/stored
+  -> PostgreSQL only
+  -> playlist plus videos ordered by position ASC and video_id ASC
+  -> frontend
+
+C. Transcript retrieval
+Video ID and optional language
+  -> GET /api/videos/{video_id}/transcript
+  -> validate the 11-character YouTube video ID
+  -> PostgreSQL cache lookup by video/language
+  -> if missing, transcript provider lookup
+  -> deterministic language selection
+  -> normalize whitespace while preserving words, punctuation, boundaries, and numeric timing
+  -> persist structured JSON transcript
+  -> return transcript response
+
+D. Chunk and embedding indexing
+Stored transcript segments
+  -> word-based chunker
+  -> target 600 words with 80-word overlap by default
+  -> timestamped chunk metadata
+  -> local all-MiniLM-L6-v2 embedding model
+  -> 384-dimensional vector
+  -> vector stored with chunk metadata in PostgreSQL
+  -> POST /api/videos/{video_id}/vectors
+  -> Qdrant upsert with deterministic point IDs and payload metadata
+
+E. Semantic search
+Question
+  -> POST /api/search
+  -> validate query, top_k, video_id, threshold
+  -> embed query with the same model/configuration
+  -> Qdrant cosine similarity search
+  -> validate payload fields and map to SearchResult
+  -> return ranked transcript chunks with source metadata
+
+F. Grounded answer generation
+Question
+  -> POST /api/ask
+  -> retrieval
+  -> ContextBuilder validation and deduplication
+  -> group by video; order groups by best relevance; order chunks chronologically
+  -> enforce RAG_MAX_SOURCES and RAG_MAX_CONTEXT_CHARS
+  -> Groq with question plus transcript context only
+  -> answer plus original source metadata
+
+8. DATABASE DESIGN
+------------------
+PostgreSQL is the durable system of record.
+
+Playlist:
+- playlist_id: natural YouTube playlist identifier and primary key.
+- title, description, thumbnail.
+- channel_id, channel_title, published_at.
+- created_at, updated_at.
+
+Video:
+- internal database ID.
+- video_id.
+- playlist_id foreign key.
+- title, description, thumbnail.
+- position, published_at, video_url, duration, available.
+- created_at, updated_at.
+- Unique relationship: playlist_id plus video_id.
+- Canonical order: position ASC, then video_id ASC as stable tie-breaker.
+
+Transcript:
+- video identity and language identity.
+- provider language name/code and generated/manual flag.
+- structured transcript segments stored as JSON.
+- cached lookup avoids unnecessary provider calls.
+
+Transcript chunk:
+- video_id and language_code.
+- chunk_index.
+- text.
+- start_time and end_time.
+- segment_start_index and segment_end_index.
+- character_count and word_count.
+- serialized embedding, embedding model, and embedding dimension metadata.
+
+Storage responsibility:
+- PostgreSQL owns metadata, transcript content, chunk identity, timestamps, and persisted vectors.
+- Qdrant owns the searchable vector index and payload copy needed for retrieval.
+- PostgreSQL remains the source of truth if the vector index must be rebuilt.
+
+9. API CONTRACT
+---------------
+GET /api/health
+- Returns service health, for example: {"status": "ok"}.
+
+GET /api/playlists/{playlist_id}
+- YouTube-backed ingestion and idempotent persistence.
+- Validates a safe playlist ID format.
+- Returns playlist metadata and ordered videos.
+- 422 invalid ID.
+- 503 database/persistence configuration failure.
+- Provider-specific status for YouTube failures.
+
+GET /api/playlists/{playlist_id}/stored
+- PostgreSQL-only retrieval.
+- Does not call YouTube.
+- 404 when the playlist has not been indexed.
+- 422 invalid ID; 503 database configuration failure.
+
+GET /api/videos/{video_id}/transcript?language={language}
+- Returns normalized, ordered transcript segments.
+- Each segment has text, numeric start seconds, and numeric duration seconds.
+- 422 invalid video ID; 404 unavailable video/transcript; 502 provider failure; 500 persistence failure.
+
+GET /api/videos/{video_id}/chunks?language={language}
+- Returns stored transcript chunks and chunk metadata.
+- 404 when chunks are not available.
+
+POST /api/videos/{video_id}/embeddings?language={language}
+- Generates missing or stale chunk embeddings.
+- Reuses embeddings made by the current configured model.
+- Returns generated/reused counts, dimension, and vectors.
+
+POST /api/videos/{video_id}/vectors?language={language}
+- Synchronizes stored valid embeddings into Qdrant.
+- Returns collection, total, upserted, and skipped counts.
+
+POST /api/search
+Request:
+{
+  "query": "What is database normalization?",
+  "top_k": 5,
+  "video_id": "optional 11-character ID",
+  "score_threshold": 0.5
+}
+- Returns normalized query, result count, and source metadata.
+- top_k defaults to 5 and is capped at 100 by settings.
+- score_threshold is optional and must be between -1 and 1.
+
+POST /api/ask
+- Runs retrieval, context construction, and answer generation.
+- Returns query, answer, provider, model, insufficient_context, and sources.
+- If no sources are available, returns a controlled insufficient-context answer and does not call Groq.
+
+10. RAG AND GROUNDING DESIGN
+----------------------------
+The LLM is intentionally not responsible for retrieval. Retrieval and context construction happen before the model call.
+
+ContextBuilder guarantees:
+- Query is non-empty and normalized.
+- Retrieved results have valid IDs, text, finite scores, and valid timestamps.
+- Duplicate chunk identities are removed.
+- Exact repeated/adjacent/overlapping transcript content is reduced.
+- Video groups are ranked by their best relevance score.
+- Chunks within a video are chronological for readability.
+- Context is bounded by character count and source count.
+- Source and timestamp metadata is preserved for the response.
+
+Groq system behavior:
+- Answer only from supplied transcript context.
+- Do not invent facts, sources, timestamps, examples, or quotations.
+- Treat transcript text as untrusted reference material; embedded instructions cannot override the system prompt.
+- Admit when context is insufficient.
+- Keep answers concise but explanatory.
+
+11. TECHNOLOGY CHOICES AND TRADE-OFFS
+-------------------------------------
+FastAPI + Pydantic
+Choice: typed Python HTTP API with explicit schemas.
+Benefits: clear contracts, validation, easy testing, good fit for service orchestration.
+Trade-off: synchronous provider/model work can occupy request workers; background jobs may be needed at scale.
+
+Next.js + TypeScript
+Choice: React App Router frontend with typed client code.
+Benefits: productive UI development, typed request boundaries, good deployment options.
+Trade-off: current client-state navigation is simple but does not yet provide durable sessions, URL-addressable views, or robust long-running job UX.
+
+PostgreSQL
+Choice: relational source of truth for playlists, transcripts, chunks, and metadata.
+Benefits: transactions, constraints, ordering, idempotent upserts, reliable rebuild source.
+Trade-off: vector similarity search is not the primary responsibility of PostgreSQL here; operating a second vector system is required.
+
+Qdrant
+Choice: purpose-built vector index for semantic search.
+Benefits: cosine search, metadata payloads, filtering, scalable vector operations.
+Trade-off: duplicated metadata and synchronization lifecycle; Qdrant can drift from PostgreSQL and requires reindex/recovery operations.
+
+Local sentence-transformers
+Choice: all-MiniLM-L6-v2 by default, 384 dimensions, configurable model.
+Benefits: no embedding API cost, predictable local behavior, privacy-friendly, easy deterministic tests with injection.
+Trade-off: model download and memory/CPU cost; quality may be below larger hosted models; changing models requires re-embedding.
+
+Groq
+Choice: hosted LLM for final grounded answer generation.
+Benefits: fast inference and simple provider API.
+Trade-off: external dependency, API cost/rate limits, network failure, provider-specific model behavior, and secret management.
+
+Transcript cache
+Choice: cache normalized structured transcript by video and language.
+Benefits: lower latency, lower provider load, repeatable chunking and indexing.
+Trade-off: transcript updates are not automatically noticed; refresh/invalidation policy is still needed.
+
+Synchronous API orchestration
+Choice: retrieval, embedding, and answer calls happen in request flow.
+Benefits: easy API semantics and straightforward initial implementation.
+Trade-off: playlist ingestion, transcript fetching, embedding generation, and vector sync may be too slow for large playlists; a job queue is the likely scale-up path.
+
+Word-based chunking with overlap
+Choice: target 600 words and 80-word overlap.
+Benefits: simple, predictable, preserves some cross-boundary context.
+Trade-off: word boundaries do not always match semantic boundaries; overlap duplicates content and increases storage/search cost; time-aware and sentence-aware chunking is a future improvement.
+
+Cosine similarity
+Choice: normalized 384-dimensional vectors and cosine distance.
+Benefits: standard semantic retrieval metric and straightforward score validation.
+Trade-off: similarity scores are not guaranteed to be calibrated confidence; thresholds require evaluation on real queries.
+
+Bounded context
+Choice: maximum 12,000 characters and 5 sources by default.
+Benefits: predictable LLM cost/latency and less irrelevant context.
+Trade-off: a correct passage can be excluded if the retrieval ranking or limit is imperfect.
+
+Grounded answer policy
+Choice: refuse to answer beyond retrieved context.
+Benefits: lower hallucination risk and traceable answers.
+Trade-off: answers can be conservative or incomplete when transcript coverage/retrieval quality is weak.
+
+12. SECURITY, RELIABILITY, AND DATA QUALITY
+--------------------------------------------
+- API keys belong in backend environment variables; the frontend never receives YouTube or Groq secrets.
+- Input IDs are validated with strict formats before provider/database work.
+- Query parameters have type, range, and length validation.
+- Provider errors are translated into controlled HTTP responses.
+- Transcript text is treated as untrusted content in the LLM prompt.
+- Context size and source count are bounded to control cost and prompt abuse.
+- Qdrant payloads are validated before becoming answer sources.
+- Embedding dimensions and finite numeric values are checked.
+- Database repositories isolate persistence from provider logic.
+- Playlist retrieval preserves deterministic ordering.
+- Stored retrieval is intentionally independent from YouTube availability.
+
+Operational gaps:
+- CORS currently allows http://localhost:3000 only.
+- No documented authentication or per-user authorization exists yet.
+- No rate limiting, request tracing, metrics, or production alerting is described.
+- Secrets, database backups, Qdrant backup/rebuild automation, and retention policy need deployment decisions.
+- The default startup path requires DATABASE_URL and initializes tables; migrations are not currently documented.
+
+13. TESTING AND VERIFICATION
+----------------------------
+Existing backend coverage includes:
+- Playlist persistence and stored retrieval.
+- Ordering and not-found behavior.
+- No-YouTube-access behavior for stored retrieval.
+- Transcript success, normalization, timestamps, language selection, generated/manual metadata.
+- Invalid IDs, unavailable videos, unavailable transcripts, provider failures.
+- Chunker boundaries, overlap, timestamps, and metadata.
+- Embedding validation and reuse behavior.
+- Qdrant synchronization/search behavior.
+- Retrieval input and payload validation.
+- Context builder ordering, deduplication, and limits.
+- LLM grounding, insufficient context, provider configuration, and response validation.
+- Ask endpoint orchestration and error mapping.
+
+Known verification state from repository notes:
+- Backend full suite previously passed: 21 tests.
+- Frontend TypeScript check previously passed with npx tsc --noEmit.
+- Frontend production build previously timed out after Next.js initialization and is not claimed as verified.
+- Live YouTube transcript retrieval is not automated; provider behavior is mocked.
+- PostgreSQL is expected for live usage; tests use SQLite fixtures where appropriate.
+
+Recommended release checks:
+1. Install backend requirements and run pytest from backend.
+2. Run frontend TypeScript check.
+3. Run frontend lint.
+4. Run the production build with sufficient time and memory.
+5. Start PostgreSQL and Qdrant.
+6. Configure environment values and run health check.
+7. Index a small known playlist.
+8. Fetch a transcript, generate embeddings, sync vectors, search, and ask a grounded question.
+9. Confirm returned timestamps point to the expected video moments.
+
+14. ENVIRONMENT AND LOCAL SETUP
+-------------------------------
+Prerequisites:
+- Node.js 20+.
+- Python 3.11+.
+- PostgreSQL for live backend usage.
+- Qdrant locally or hosted for semantic search.
+- YouTube API key for playlist ingestion.
+- Groq API key for answer generation when retrieved context exists.
+
+Backend setup:
+- cd backend
+- python -m venv .venv
+- .\.venv\Scripts\Activate.ps1
+- python -m pip install -r requirements.txt
+- uvicorn app.main:app --reload --port 8000
+
+Frontend setup:
+- cd frontend
+- npm install
+- npm run dev
+- open http://localhost:3000
+
+Root commands:
+- npm run dev: starts the frontend through the root package script.
+- npm run build: runs the frontend production build.
+- npm run lint: runs frontend lint.
+
+Important environment settings:
+- DATABASE_URL: required for live PostgreSQL.
+- YOUTUBE_API_KEY: required for playlist metadata ingestion.
+- QDRANT_URL: vector service URL.
+- QDRANT_API_KEY: optional locally, normally required for Qdrant Cloud.
+- QDRANT_COLLECTION_NAME: defaults to asktube_chunks.
+- EMBEDDING_MODEL: defaults to sentence-transformers/all-MiniLM-L6-v2.
+- EMBEDDING_DIMENSION: defaults to 384 and must match the model.
+- EMBEDDING_NORMALIZE: defaults to true.
+- EMBEDDING_BATCH_SIZE: defaults to 32.
+- RETRIEVAL_TOP_K: defaults to 5.
+- RETRIEVAL_MAX_TOP_K: defaults to 100.
+- RAG_MAX_CONTEXT_CHARS: defaults to 12000.
+- RAG_MAX_SOURCES: defaults to 5.
+- GROQ_API_KEY: required for an answer when sources exist.
+- GROQ_MODEL: defaults to llama-3.3-70b-versatile.
+
+15. IMPLEMENTATION STATUS
+-------------------------
+Implemented:
+- Monorepo project foundation.
+- YouTube-inspired frontend shell and playlist flow.
+- Playlist URL/ID validation.
+- YouTube playlist metadata and paginated video retrieval.
+- PostgreSQL playlist/video persistence and idempotent upsert.
+- PostgreSQL stored playlist retrieval with stable ordering.
+- Transcript retrieval, normalization, persistence, and language-aware caching.
+- Transcript chunking with timestamps and overlap.
+- Local embedding generation and persisted embedding metadata.
+- Qdrant vector synchronization and semantic search.
+- Retrieval result validation.
+- Deterministic bounded RAG context construction.
+- Groq grounded answer generation.
+- Controlled insufficient-context behavior.
+- Focused backend tests across the major services.
+
+Partially surfaced:
+- Full transcript ingestion/indexing workflow in the user-facing frontend.
+- Chat UI integration with the live /api/ask route.
+- Source timestamp navigation.
+- Progress reporting for long indexing operations.
+- Clear user-facing error states for every backend failure class.
+
+Not yet implemented or not documented as complete:
+- Transcript refresh and invalidation policies.
+- Time-aware/sentence-aware chunking.
+- Hybrid lexical plus semantic retrieval.
+- Reranking.
+- Conversation memory and persistence.
+- Query rewriting.
+- User accounts, authorization, and multi-tenant isolation.
+- Background jobs and progress events.
+- Production migrations, observability, rate limiting, and deployment automation.
+
+16. RISKS AND MITIGATIONS
+-------------------------
+Risk: YouTube/transcript provider limits or API changes.
+Mitigation: cache provider responses, map failures to controlled statuses, add retry/backoff and refresh policy.
+
+Risk: Large playlists make synchronous indexing slow.
+Mitigation: queue ingestion and indexing jobs; show progress; make each stage idempotent.
+
+Risk: PostgreSQL and Qdrant become inconsistent.
+Mitigation: keep PostgreSQL authoritative, use deterministic point IDs, expose sync counts, and provide a rebuild command.
+
+Risk: Embedding model changes invalidate existing vectors.
+Mitigation: store model name/dimension, detect stale embeddings, version collections or re-embed explicitly.
+
+Risk: Retrieval returns plausible but incomplete context.
+Mitigation: evaluate recall, tune chunking/top_k/threshold, add reranking, preserve conservative insufficient-context behavior.
+
+Risk: Transcript prompt injection.
+Mitigation: system prompt explicitly treats transcript text as untrusted reference content and rejects embedded instructions.
+
+Risk: Secrets or private data exposure.
+Mitigation: backend-only provider keys, secret management, authentication and authorization before multi-user deployment.
+
+Risk: Build and runtime environment differences.
+Mitigation: lock dependency ranges, run CI checks, document required services, and verify a production build in CI.
+
+17. NEXT BEST DEVELOPMENT STEPS
+--------------------------------
+Priority 1: complete the visible product loop.
+- Connect ChatWindow to /api/ask.
+- Display answer, sources, scores, and timestamps.
+- Add click-to-open-video-at-timestamp behavior.
+- Add loading, empty, retry, and provider/database error states.
+
+Priority 2: make indexing operationally safe.
+- Add one idempotent indexing command/workflow for transcript -> chunks -> embeddings -> Qdrant.
+- Add job status and progress reporting.
+- Add retries and explicit partial-failure recovery.
+
+Priority 3: improve retrieval quality.
+- Add evaluation questions and expected source chunks.
+- Compare chunk sizes and overlap.
+- Add sentence/time-aware chunking.
+- Tune score thresholds and top_k.
+- Add optional reranking or hybrid lexical retrieval.
+
+Priority 4: production readiness.
+- Add authentication and per-user ownership.
+- Add database migrations.
+- Add rate limits, structured logging, metrics, tracing, and health checks for dependencies.
+- Add CI for backend tests, TypeScript, lint, and frontend production build.
+- Add backup/rebuild procedures for PostgreSQL and Qdrant.
+
+Priority 5: richer assistant behavior.
+- Conversation persistence and memory.
+- Query rewriting for follow-up questions.
+- Cross-video comparison UX.
+- Better transcript language selection and refresh controls.
+
+18. ARCHITECTURAL DECISION SUMMARY
+----------------------------------
+The project intentionally separates concerns:
+- The frontend owns interaction and presentation.
+- FastAPI routes own HTTP validation and error translation.
+- Services own provider orchestration and business rules.
+- Repositories own PostgreSQL persistence.
+- PostgreSQL owns durable truth.
+- Qdrant owns fast vector lookup, not canonical metadata.
+- The embedding model transforms text into searchable vectors.
+- The context builder controls what the LLM is allowed to see.
+- Groq generates language, but it does not retrieve evidence.
+
+The central design principle is grounded assistance: every generated answer should be constrained by retrieved transcript evidence and should preserve enough source metadata for the user to inspect the original video.
+
+19. PRESENTATION CLOSING
+------------------------
+AskTube is not only a chatbot over YouTube links. It is an indexing and retrieval pipeline that makes long-form video knowledge inspectable. The current foundation already covers persistence, transcripts, embeddings, vector retrieval, and grounded generation. The next product milestone is to bring those backend capabilities into one polished frontend workflow with visible progress, traceable answers, and direct timestamp navigation.

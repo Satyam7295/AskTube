@@ -50,7 +50,8 @@ class YouTubePlaylistService:
 
     async def _get_playlist_item(self, client: httpx.AsyncClient, playlist_id: str) -> dict[str, Any] | None:
         data = await self._request(client, "playlists", {"part": "snippet", "id": playlist_id})
-        return data.get("items", [None])[0]
+        items = data.get("items", [])
+        return items[0] if items else None
 
     async def _get_all_playlist_items(self, client: httpx.AsyncClient, playlist_id: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []

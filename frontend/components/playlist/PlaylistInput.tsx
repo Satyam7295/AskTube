@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { useState } from "react";
 import { ArrowRight, Link2 } from "lucide-react";
 import { parseYouTubePlaylistUrl, type ValidatedPlaylist } from "../../lib/youtube/playlistUrl";
@@ -6,6 +7,8 @@ type PlaylistInputProps = {
   value: string;
   onChange: (value: string) => void;
   onPlaylistValidated: (playlist: ValidatedPlaylist) => Promise<void>;
+  isProcessingPlaylist?: boolean;
+  processingMessage?: string;
 };
 
 type ValidationState =
@@ -15,7 +18,7 @@ type ValidationState =
   | { status: "error"; error: string }
   | { status: "valid"; playlist: ValidatedPlaylist };
 
-export function PlaylistInput({ value, onChange, onPlaylistValidated }: PlaylistInputProps) {
+export function PlaylistInput({ value, onChange, onPlaylistValidated, isProcessingPlaylist = false, processingMessage = "Reading playlist..." }: PlaylistInputProps) {
   const [validation, setValidation] = useState<ValidationState>({ status: "empty" });
 
   function handleChange(nextValue: string) {
@@ -25,7 +28,7 @@ export function PlaylistInput({ value, onChange, onPlaylistValidated }: Playlist
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (validation.status === "validating" || !value.trim()) return;
+    if (validation.status === "validating" || isProcessingPlaylist || !value.trim()) return;
 
     setValidation({ status: "validating" });
     const result = parseYouTubePlaylistUrl(value);
@@ -38,7 +41,7 @@ export function PlaylistInput({ value, onChange, onPlaylistValidated }: Playlist
       await onPlaylistValidated(result);
       setValidation({ status: "valid", playlist: result });
     } catch (error) {
-      setValidation({ status: "error", error: error instanceof Error ? error.message : "We could not load this playlist." });
+      setValidation({ status: "error", error: "We couldn't process this playlist. Try again or check the playlist link." });
     }
   }
 
@@ -50,5 +53,21 @@ export function PlaylistInput({ value, onChange, onPlaylistValidated }: Playlist
       ? "Playlist URL recognized"
       : null;
 
-  return <form onSubmit={handleSubmit} className="max-w-3xl rounded-2xl border border-[#e5e7eb] bg-white p-2 shadow-[0_8px_30px_rgba(22,24,29,0.04)]" noValidate><div className="flex flex-col gap-2 sm:flex-row"><label htmlFor="playlist-url" className="sr-only">YouTube playlist URL</label><div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl bg-[#f5f6f7] px-4"><Link2 size={18} className="shrink-0 text-[#9297a1]" /><input id="playlist-url" type="text" value={value} onChange={(event) => handleChange(event.target.value)} placeholder="Paste a YouTube playlist URL" className="min-w-0 flex-1 bg-transparent py-3 text-sm outline-none placeholder:text-[#9297a1]" aria-invalid={validation.status === "invalid" || validation.status === "error"} aria-describedby={message ? "playlist-url-message" : undefined} /></div><button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#e32626] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#c91e24] disabled:cursor-not-allowed disabled:opacity-50" disabled={!value.trim() || validation.status === "validating"}>{validation.status === "validating" ? "Loading..." : "Load playlist"} <ArrowRight size={17} /></button></div>{message && <p id="playlist-url-message" role={validation.status === "invalid" || validation.status === "error" ? "alert" : "status"} className={`px-2 pt-2 text-sm ${validation.status === "invalid" || validation.status === "error" ? "text-[#c91e24]" : "text-[#18794e]"}`}>{message}</p>}</form>;
+  if (isProcessingPlaylist) {
+    return (
+      <div className="flex max-w-3xl flex-col items-center gap-4 py-6">
+        <Image
+          src="/assets/Scan.gif"
+          alt="Scanning playlist animation"
+          width={160}
+          height={160}
+          unoptimized
+          priority
+        />
+        <p className="text-sm font-medium text-[#60646c]">{processingMessage}</p>
+      </div>
+    );
+  }
+
+  return <form onSubmit={handleSubmit} className="max-w-3xl rounded-2xl border border-[#e5e7eb] bg-white p-2 shadow-[0_8px_30px_rgba(22,24,29,0.04)]" noValidate><div className="flex flex-col gap-2 sm:flex-row"><label htmlFor="playlist-url" className="sr-only">YouTube playlist URL</label><div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl bg-[#f5f6f7] px-4"><Link2 size={18} className="shrink-0 text-[#9297a1]" /><input id="playlist-url" type="text" value={value} onChange={(event) => handleChange(event.target.value)} placeholder="Paste a YouTube playlist link" className="min-w-0 flex-1 bg-transparent py-3 text-sm outline-none placeholder:text-[#9297a1]" aria-invalid={validation.status === "invalid" || validation.status === "error"} aria-describedby={message ? "playlist-url-message" : undefined} /></div><button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#e32626] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#c91e24] disabled:cursor-not-allowed disabled:opacity-50" disabled={!value.trim() || validation.status === "validating"}>{validation.status === "validating" ? "Loading..." : "Load Playlist"} <ArrowRight size={17} /></button></div>{message && <p id="playlist-url-message" role={validation.status === "invalid" || validation.status === "error" ? "alert" : "status"} className={`px-2 pt-2 text-sm ${validation.status === "invalid" || validation.status === "error" ? "text-[#c91e24]" : "text-[#18794e]"}`}>{message}</p>}</form>;
 }
