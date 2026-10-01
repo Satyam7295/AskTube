@@ -37,3 +37,4 @@ class PlaylistResponse(BaseModel):
     failed_videos: int = 0
     last_error: str | None = None
     video_diagnostics: list[dict[str, str]] = Field(default_factory=list)
+    transcript_access_blocked: bool = False

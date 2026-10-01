@@ -32,6 +32,7 @@ class PlaylistIndexReport:
     failed_videos: int
     last_error: str | None = None
     video_diagnostics: list[dict[str, str]] | None = None
+    transcript_access_blocked: bool = False
 
 
 class PlaylistIndexingService:
@@ -127,6 +128,7 @@ class PlaylistIndexingService:
         failed = 0
         errors: list[str] = []
         diagnostics: list[dict[str, str]] = []
+        transcript_access_blocked = False
 
         for video in videos:
             if not video.available:
@@ -192,6 +194,8 @@ class PlaylistIndexingService:
                 logger.warning("Playlist video skipped: playlist_id=%s video_id=%s reason=%s", playlist_id, video.video_id, error)
             except Exception as error:
                 failed += 1
+                if self._is_transcript_access_blocked(error):
+                    transcript_access_blocked = True
                 diagnostic = self._diagnostic(video, "failed", stage, error)
                 diagnostics.append(diagnostic)
                 errors.append(self._format_diagnostic(diagnostic))
@@ -206,7 +210,7 @@ class PlaylistIndexingService:
                 if video.available:
                     processed += 1
                     self._save_progress(
-                        playlist_id, total_videos, processed, indexed, skipped, failed, errors, diagnostics
+                        playlist_id, total_videos, processed, indexed, skipped, failed, errors, diagnostics, transcript_access_blocked
                     )
                     if self.settings.transcript_request_delay_seconds > 0:
                         time.sleep(self.settings.transcript_request_delay_seconds)
@@ -227,6 +231,7 @@ class PlaylistIndexingService:
             failed,
             "; ".join(errors)[:4000] or None,
             diagnostics,
+            transcript_access_blocked,
         )
         self.playlist_repository.save_index_status(playlist_id, report.__dict__)
         return report
@@ -241,6 +246,7 @@ class PlaylistIndexingService:
         failed: int,
         errors: list[str],
         diagnostics: list[dict[str, str]],
+        transcript_access_blocked: bool = False,
     ) -> None:
         self.playlist_repository.save_index_status(
             playlist_id,
@@ -253,8 +259,21 @@ class PlaylistIndexingService:
                 "failed_videos": failed,
                 "last_error": "; ".join(errors)[:4000] or None,
                 "video_diagnostics": diagnostics,
+                "transcript_access_blocked": transcript_access_blocked,
             },
         )
+
+    @staticmethod
+    def _is_transcript_access_blocked(error: Exception) -> bool:
+        """Return True when the error conclusively indicates YouTube is blocking
+        transcript requests from this network/IP (auth block or rate-limit)."""
+        from app.services.transcript.transcript_service import TranscriptProviderError
+        if isinstance(error, TranscriptProviderError):
+            return error.error_code in {"PROVIDER_AUTH_ERROR", "PROVIDER_RATE_LIMIT"}
+        # Fallback: catch common library error class names for IP/request blocking
+        error_name = type(error).__name__
+        return error_name in {"IpBlocked", "RequestBlocked"} or "blocked" in error_name.lower()
+
 
     @property
     def _transcript_repository(self) -> TranscriptRepository:
@@ -310,4 +329,5 @@ class PlaylistIndexingService:
             status.failed_videos,
             status.last_error,
             getattr(status, "video_diagnostics", None) or [],
-        )
+            getattr(status, "transcript_access_blocked", False),
+        )

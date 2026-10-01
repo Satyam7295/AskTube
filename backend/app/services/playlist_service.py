@@ -111,6 +111,7 @@ class PlaylistService:
         response.failed_videos = report.failed_videos
         response.last_error = getattr(report, "last_error", None)
         response.video_diagnostics = getattr(report, "video_diagnostics", None) or []
+        response.transcript_access_blocked = getattr(report, "transcript_access_blocked", False)
 
     @staticmethod
     def _to_http_url(value: str | None):

@@ -136,7 +136,7 @@ function progressDetail(progress: ReturnType<typeof getProgress>) {
 }
 
 function hasBlockedTranscript(playlist: PlaylistData) {
-  return playlist.video_diagnostics.some((diagnostic) => /YouTube (blocked|rate-limited) transcript access/i.test(diagnostic.error));
+  return playlist.transcript_access_blocked === true;
 }
 
 function TranscriptAccessModal({ onClose }: { onClose: () => void }) {

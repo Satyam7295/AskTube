@@ -24,7 +24,9 @@ export type PlaylistData = {
   failed_videos: number;
   last_error: string | null;
   video_diagnostics: Array<{ video_id: string; title: string; status: string; error: string; technical_details?: string }>;
+  transcript_access_blocked: boolean;
 };
+
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const playlistRequestTimeoutMs = 30000;
@@ -59,8 +61,10 @@ function normalizePlaylistData(body: PlaylistData): PlaylistData {
     failed_videos: body.failed_videos ?? 0,
     last_error: body.last_error ?? null,
     video_diagnostics: body.video_diagnostics ?? [],
+    transcript_access_blocked: body.transcript_access_blocked ?? false,
   };
 }
+
 
 async function parsePlaylistResponse(response: Response): Promise<PlaylistData> {
   const body = await response.json().catch(() => null);
