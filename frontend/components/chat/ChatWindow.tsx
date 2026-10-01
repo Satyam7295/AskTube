@@ -90,7 +90,7 @@ export function ChatWindow({ playlist, playlistUrl, onLoadAnother }: ChatWindowP
     </aside>
     <section className="conversation-panel">
       <header className="conversation-header"><div><p className="eyebrow">AskTube</p><h2>Ask your playlist</h2></div><div className={`ready-label status-${currentPlaylist.indexing_status}`}><span /> {statusText}</div></header>
-      <div className="conversation-intro"><strong>{introTitle(currentPlaylist)}</strong>{isIndexing ? <><div className="indexing-progress" role="progressbar" aria-label="Playlist indexing progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}><div className="indexing-progress-fill" style={{ width: `${progress.percent}%` }} /></div><span className="indexing-progress-percent">{progress.percent}%</span><p className="indexing-progress-detail">{progressDetail(progress)}</p><p className="indexing-warning">Answers may be incomplete while indexing is in progress.</p></> : <><p className="indexing-progress-detail">{progressDetail(progress)}</p>{transcriptAccessBlocked && <div className="indexing-blocked-state" role="status"><strong>Transcript access temporarily unavailable</strong><span>Try again later.</span></div>}{currentPlaylist.indexing_status === "INDEXING_FAILED" && !transcriptAccessBlocked && <p className="indexing-warning">No searchable content was created. Try loading the playlist again.</p>}{currentPlaylist.video_diagnostics.length > 0 && !transcriptAccessBlocked && <details><summary>View indexing details</summary><ul>{currentPlaylist.video_diagnostics.map((diagnostic) => <li key={diagnostic.video_id}><strong>{diagnostic.video_id}</strong><br />{safeDiagnosticMessage(diagnostic.status)}</li>)}</ul></details>}</>}</div>
+      <div className="conversation-intro"><strong>{introTitle(currentPlaylist)}</strong>{isIndexing ? <><div className="indexing-progress" role="progressbar" aria-label="Playlist indexing progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}><div className="indexing-progress-fill" style={{ width: `${progress.percent}%` }} /></div><span className="indexing-progress-percent">{progress.percent}%</span><p className="indexing-progress-detail">{progressDetail(progress)}</p><p className="indexing-warning">Answers may be incomplete while indexing is in progress.</p></> : <><p className="indexing-progress-detail">{progressDetail(progress)}</p>{currentPlaylist.indexing_status === "INDEXING_FAILED" && !transcriptAccessBlocked && <p className="indexing-warning">No searchable content was created. Try loading the playlist again.</p>}</>}{transcriptAccessBlocked && <div className="indexing-blocked-state" role="status"><strong>Transcript access temporarily unavailable</strong><span>Try again later.</span></div>}</div>
       <div className="conversation-body">
         {turns.length === 0 && !isSearching && <div className="empty-prompt"><Sparkles size={18} /><span>Choose a question from the left or ask your own below.</span></div>}
         <div aria-live="polite" aria-atomic="false">
@@ -137,12 +137,6 @@ function progressDetail(progress: ReturnType<typeof getProgress>) {
 
 function hasBlockedTranscript(playlist: PlaylistData) {
   return playlist.video_diagnostics.some((diagnostic) => /YouTube (blocked|rate-limited) transcript access/i.test(diagnostic.error));
-}
-
-function safeDiagnosticMessage(status: string) {
-  return status === "no_transcript" || status === "transcript_failed"
-    ? "Transcript unavailable for this video."
-    : "This video could not be indexed.";
 }
 
 function TranscriptAccessModal({ onClose }: { onClose: () => void }) {
