@@ -29,3 +29,9 @@ class PlaylistResponse(BaseModel):
     playlist: PlaylistMetadata
     videos: list[PlaylistVideo]
     total_videos: int = 0
+    indexing_status: str = "pending"
+    processed_videos: int = 0
+    indexed_videos: int = 0
+    skipped_videos: int = 0
+    videos_without_transcripts: int = 0
+    failed_videos: int = 0

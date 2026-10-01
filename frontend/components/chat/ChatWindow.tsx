@@ -22,6 +22,10 @@ export function ChatWindow({ playlist, playlistUrl, onLoadAnother }: ChatWindowP
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
+  const progress = getProgress(currentPlaylist);
+  const isIndexing = currentPlaylist.indexing_status === "pending" || currentPlaylist.indexing_status === "indexing";
+  const statusText = statusLabel(currentPlaylist.indexing_status, progress.indexed, progress.total);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await submitQuestion(question);

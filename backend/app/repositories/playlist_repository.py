@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Callable
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.database import DatabaseConfigurationError, get_session_factory
 from app.models.playlist import Playlist
 from app.models.video import Video
+from app.models.indexing import PlaylistIndexStatus
 
 
 def _coerce_datetime(value: Any) -> datetime | None:
@@ -196,3 +198,29 @@ class PlaylistRepository:
                 .order_by(Video.position.asc(), Video.video_id.asc())
                 .all()
             )
+
+    def find_video_by_title(self, playlist_id: str, title: str) -> Video | None:
+        with self.session_factory() as session:
+            return (
+                session.query(Video)
+                .filter(Video.playlist_id == playlist_id, func.lower(Video.title) == title.strip().lower())
+                .order_by(Video.position.asc(), Video.video_id.asc())
+                .first()
+            )
+
+    def save_index_status(self, playlist_id: str, values: dict[str, Any]) -> PlaylistIndexStatus:
+        with self.session_factory() as session:
+            with session.begin():
+                status = session.get(PlaylistIndexStatus, playlist_id)
+                if status is None:
+                    status = PlaylistIndexStatus(playlist_id=playlist_id)
+                    session.add(status)
+                for key, value in values.items():
+                    setattr(status, key, value)
+                status.updated_at = datetime.utcnow()
+                session.flush()
+                return status
+
+    def get_index_status(self, playlist_id: str) -> PlaylistIndexStatus | None:
+        with self.session_factory() as session:
+            return session.get(PlaylistIndexStatus, playlist_id)

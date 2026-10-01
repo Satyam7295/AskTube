@@ -4,6 +4,8 @@ from app.core.config import Settings
 from app.repositories.playlist_repository import PlaylistRepository
 from app.schemas.playlist import PlaylistMetadata, PlaylistResponse, PlaylistVideo
 from app.services.youtube.playlist_service import YouTubePlaylistService
+from app.services.playlist_indexing_service import PlaylistIndexReport, PlaylistIndexingService
+from fastapi import BackgroundTasks
 
 
 class PlaylistServiceError(RuntimeError):
@@ -13,10 +15,16 @@ class PlaylistServiceError(RuntimeError):
 
 
 class PlaylistService:
-    def __init__(self, settings: Settings, repository: PlaylistRepository | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        repository: PlaylistRepository | None = None,
+        indexing_service: PlaylistIndexingService | None = None,
+    ) -> None:
         self.settings = settings
         self.youtube_service = YouTubePlaylistService(settings)
         self.repository = repository or PlaylistRepository()
+        self.indexing_service = indexing_service or PlaylistIndexingService(settings, self.repository)
 
     async def get_playlist(self, playlist_id: str) -> PlaylistResponse:
         response = await self.youtube_service.get_playlist(playlist_id)
@@ -48,7 +56,13 @@ class PlaylistService:
             payload,
         )
         response.total_videos = len(response.videos)
+        report = self.indexing_service.prepare_indexing(playlist_id)
+        self._apply_index_report(response, report)
         return response
+
+    def schedule_indexing(self, playlist_id: str, background_tasks: BackgroundTasks) -> None:
+        if self.indexing_service.schedule_indexing(playlist_id):
+            background_tasks.add_task(self.indexing_service.run_indexing, playlist_id)
 
     def get_persisted_playlist(self, playlist_id: str) -> PlaylistResponse | None:
         playlist, videos = self.repository.get_playlist_with_videos(playlist_id)
@@ -69,7 +83,7 @@ class PlaylistService:
             )
             for video in videos
         ]
-        return PlaylistResponse(
+        response = PlaylistResponse(
             playlist=PlaylistMetadata(
                 playlist_id=playlist.playlist_id,
                 title=playlist.title,
@@ -82,6 +96,19 @@ class PlaylistService:
             videos=ordered_videos,
             total_videos=len(ordered_videos),
         )
+        status = self.repository.get_index_status(playlist_id)
+        if status is not None:
+            self._apply_index_report(response, PlaylistIndexingService._report(status))
+        return response
+
+    @staticmethod
+    def _apply_index_report(response: PlaylistResponse, report: PlaylistIndexReport) -> None:
+        response.indexing_status = report.status
+        response.processed_videos = report.processed_videos
+        response.indexed_videos = report.indexed_videos
+        response.skipped_videos = report.skipped_videos
+        response.videos_without_transcripts = report.skipped_videos
+        response.failed_videos = report.failed_videos
 
     @staticmethod
     def _to_http_url(value: str | None):

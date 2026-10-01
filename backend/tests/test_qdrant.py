@@ -75,6 +75,7 @@ def test_point_id_is_deterministic_and_payload_contains_metadata():
     service = QdrantService(settings=settings, client=FakeQdrantClient())
     chunk = SimpleNamespace(
         id=42,
+        playlist_id="PL_TEST",
         video_id="dQw4w9WgXcQ",
         language_code="en",
         chunk_index=7,
@@ -94,6 +95,8 @@ def test_point_id_is_deterministic_and_payload_contains_metadata():
     assert point["payload"]["chunk_id"] == 42
     assert point["payload"]["video_id"] == "dQw4w9WgXcQ"
     assert point["payload"]["chunk_index"] == 7
+    assert point["payload"]["playlist_id"] == "PL_TEST"
+    assert point["payload"]["language_code"] == "en"
     assert point["payload"]["text"] == "Hello world from AskTube."
     assert point["payload"]["start_time"] == 12.5
     assert point["payload"]["end_time"] == 18.0

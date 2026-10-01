@@ -1,6 +1,6 @@
 import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.core.config import get_settings
 from app.db.database import DatabaseConfigurationError
@@ -13,12 +13,14 @@ PLAYLIST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 @router.get("/{playlist_id}", response_model=PlaylistResponse)
-async def get_playlist(playlist_id: str) -> PlaylistResponse:
+async def get_playlist(playlist_id: str, background_tasks: BackgroundTasks) -> PlaylistResponse:
     if not PLAYLIST_ID_PATTERN.fullmatch(playlist_id):
         raise HTTPException(status_code=422, detail="Invalid YouTube playlist ID.")
     service = PlaylistService(get_settings())
     try:
-        return await service.get_playlist(playlist_id)
+        response = await service.get_playlist(playlist_id)
+        service.schedule_indexing(playlist_id, background_tasks)
+        return response
     except (DatabaseConfigurationError, ValueError) as error:
         raise HTTPException(
             status_code=503,
@@ -29,7 +31,7 @@ async def get_playlist(playlist_id: str) -> PlaylistResponse:
 
 
 @router.get("/{playlist_id}/stored", response_model=PlaylistResponse)
-async def get_stored_playlist(playlist_id: str) -> PlaylistResponse:
+async def get_stored_playlist(playlist_id: str, background_tasks: BackgroundTasks) -> PlaylistResponse:
     if not PLAYLIST_ID_PATTERN.fullmatch(playlist_id):
         raise HTTPException(status_code=422, detail="Invalid YouTube playlist ID.")
     service = PlaylistService(get_settings())
@@ -37,6 +39,8 @@ async def get_stored_playlist(playlist_id: str) -> PlaylistResponse:
         response = service.get_persisted_playlist(playlist_id)
         if response is None:
             raise HTTPException(status_code=404, detail="Playlist has not been indexed yet.")
+        if response.indexing_status in {"pending", "indexing"}:
+            service.schedule_indexing(playlist_id, background_tasks)
         return response
     except (DatabaseConfigurationError, ValueError) as error:
         raise HTTPException(
