@@ -1,12 +1,15 @@
-Watch the AskTube project advertisement:
+🎥 **Watch the AskTube Project Advertisement**
 
 [▶️ Watch Advertisement Video](https://drive.google.com/file/d/1mCa3-dMP50nsR5ZJSe0yUu7ndO4uORWd/view?usp=sharing)
 
+🎬 **Demo Video**
+
+[▶️ Watch AskTube Demo](https://drive.google.com/file/d/13acYani_Cd5Vlz9cUqko8msyD8NRzzpa/view?usp=sharing)
+
 📑 **Pitch Deck**
 
-View the AskTube presentation:
-
 [📊 View AskTube Pitch Deck](https://canva.link/zh0b6bl4grzlsyx)
+
 
 <img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/cf66edf5-20a9-4aad-a3df-a73bef831b1c" />
 <img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/effe4c70-032a-411b-888b-6f94f6541559" />
