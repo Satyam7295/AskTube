@@ -36,9 +36,7 @@ class FakeQdrantClient:
             for condition in query_filter.must:
                 key = condition.key
                 value = condition.match.value
-                candidates = [
-                    point for point in candidates if point.payload.get(key) == value
-                ]
+                candidates = [point for point in candidates if point.payload.get(key) == value]
         scored = []
         for point in candidates:
             score = sum(left * right for left, right in zip(query_vector, point.vector))
@@ -47,7 +45,7 @@ class FakeQdrantClient:
         return sorted(scored, key=lambda point: point.score, reverse=True)[:limit]
 
 
-def make_service(points):
+def make_service(points, playlist_repository=None):
     settings = Settings(
         qdrant_url="http://localhost:6333",
         qdrant_collection_name="test_chunks",
@@ -58,7 +56,7 @@ def make_service(points):
     client = FakeQdrantClient(points)
     embedding = EmbeddingService(model_name="test", model=FakeEmbeddingModel(), normalize=True)
     qdrant = QdrantService(settings=settings, client=client)
-    return RetrievalService(embedding, qdrant), client
+    return RetrievalService(embedding, qdrant, playlist_repository=playlist_repository), client
 
 
 def point(point_id, video_id, text, playlist_id="PL_TEST_A"):
@@ -132,6 +130,41 @@ def test_playlist_filter_is_applied_by_qdrant(retrieval):
     assert client.last_filter.must[0].key == "playlist_id"
     assert client.last_filter.must[0].match.value == "PL_TEST_A"
     assert {result.video_id for result in results} == {VIDEO_A, VIDEO_B}
+
+
+def test_exact_playlist_title_resolves_video_filter():
+    repository = SimpleNamespace(
+        get_playlist_videos=lambda playlist_id: [
+            SimpleNamespace(video_id=VIDEO_A, title="Roadmap for backend from first principles"),
+            SimpleNamespace(video_id=VIDEO_B, title="Introduction to backend development"),
+        ]
+    )
+    service, client = make_service(
+        [
+            point(1, VIDEO_A, "React is a JavaScript library for interfaces."),
+            point(2, VIDEO_B, "React components build frontend interfaces."),
+        ],
+        playlist_repository=repository,
+    )
+
+    _, results = service.retrieve("Roadmap for backend from first principles", playlist_id="PL_TEST_A")
+
+    assert results
+    assert {result.video_id for result in results} == {VIDEO_A}
+    assert any(condition.key == "video_id" and condition.match.value == VIDEO_A for condition in client.last_filter.must)
+    assert any(condition.key == "playlist_id" and condition.match.value == "PL_TEST_A" for condition in client.last_filter.must)
+
+
+def test_title_normalization_ignores_case_and_punctuation():
+    repository = SimpleNamespace(
+        get_playlist_videos=lambda playlist_id: [SimpleNamespace(video_id=VIDEO_A, title="Roadmap for Backend: From First Principles")]
+    )
+    service, client = make_service([point(1, VIDEO_A, "React interface")], playlist_repository=repository)
+
+    _, results = service.retrieve(" roadmap FOR backend from first principles ", playlist_id="PL_TEST_A")
+
+    assert results[0].video_id == VIDEO_A
+    assert any(condition.key == "video_id" and condition.match.value == VIDEO_A for condition in client.last_filter.must)
 
 
 def test_results_are_ranked_and_thresholded(retrieval):
