@@ -5,8 +5,9 @@ import re
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.repositories.playlist_repository import PlaylistRepository
 from app.schemas.search import SearchResult
-from app.services.embedding_service import EmbeddingInputError, EmbeddingModelError, EmbeddingService
+from app.services.embedding_service import EmbeddingInputError, EmbeddingService
 from app.services.qdrant_service import QdrantService, QdrantVectorValidationError
 
 
@@ -20,6 +21,7 @@ class RetrievalResultError(ValueError):
 
 VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 PLAYLIST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+TITLE_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
 
 
 class RetrievalService:
@@ -28,10 +30,12 @@ class RetrievalService:
         embedding_service: EmbeddingService | None = None,
         qdrant_service: QdrantService | None = None,
         settings: Settings | None = None,
+        playlist_repository: PlaylistRepository | None = None,
     ) -> None:
         self.settings = settings or (qdrant_service.settings if qdrant_service is not None else get_settings())
         self.embedding_service = embedding_service or EmbeddingService()
         self.qdrant_service = qdrant_service or QdrantService()
+        self.playlist_repository = playlist_repository
 
     def retrieve(
         self,
@@ -64,6 +68,13 @@ class RetrievalService:
         ):
             raise RetrievalInputError("score_threshold must be a finite number between -1 and 1.")
 
+        # Exact playlist-title queries must resolve to the titled video before
+        # semantic search. Titles are metadata and may never occur verbatim in a
+        # transcript, so embedding the title alone can otherwise select another video.
+        resolved_video_id = video_id
+        if resolved_video_id is None and playlist_id is not None:
+            resolved_video_id = self._resolve_exact_title_video(normalized_query, playlist_id)
+
         try:
             vector = self.embedding_service.embed_text(normalized_query)
             if len(vector) != self.settings.embedding_dimension or not all(math.isfinite(value) for value in vector):
@@ -72,11 +83,45 @@ class RetrievalService:
                 norm = math.sqrt(sum(value * value for value in vector))
                 if norm == 0 or not math.isclose(norm, 1.0, rel_tol=1e-4, abs_tol=1e-4):
                     raise RetrievalInputError("Query embedding is not normalized.")
-            matches = self.qdrant_service.search(vector, resolved_top_k, video_id, score_threshold, playlist_id)
+            matches = self.qdrant_service.search(
+                vector,
+                resolved_top_k,
+                resolved_video_id,
+                score_threshold,
+                playlist_id,
+            )
         except (EmbeddingInputError, QdrantVectorValidationError) as error:
             raise RetrievalInputError("Query embedding is invalid.") from error
 
         return normalized_query, [self._map_result(match.payload, match.score) for match in matches]
+
+    def _resolve_exact_title_video(self, query: str, playlist_id: str) -> str | None:
+        """Resolve an exact video-title query inside the active playlist.
+
+        This lookup is best-effort; normal semantic retrieval remains the fallback
+        if the database is unavailable or there is no exact title match.
+        """
+        try:
+            repository = self.playlist_repository or PlaylistRepository()
+            normalized_query = self._normalize_title(query)
+            if not normalized_query:
+                return None
+            for video in repository.get_playlist_videos(playlist_id):
+                title = getattr(video, "title", None)
+                candidate_video_id = getattr(video, "video_id", None)
+                if (
+                    isinstance(title, str)
+                    and isinstance(candidate_video_id, str)
+                    and self._normalize_title(title) == normalized_query
+                ):
+                    return candidate_video_id
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
+    def _normalize_title(value: str) -> str:
+        return " ".join(TITLE_NORMALIZE_PATTERN.sub(" ", value.lower()).split())
 
     @staticmethod
     def _map_result(payload: dict[str, Any], score: float) -> SearchResult:
