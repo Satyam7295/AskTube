@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { ChatWindow } from "../components/chat/ChatWindow";
 import { PlaylistInput } from "../components/playlist/PlaylistInput";
-import { ingestPlaylist, type PlaylistData } from "../lib/api/playlists";
+import { getStoredPlaylist, ingestPlaylist, type PlaylistData } from "../lib/api/playlists";
 import type { ValidatedPlaylist } from "../lib/youtube/playlistUrl";
 
 const processingMessages = ["Reading playlist...", "Processing videos...", "Understanding transcripts...", "Building your knowledge base..."];
+const activePlaylistStorageKey = "asktube.activePlaylist";
 
 export default function Home() {
   const [playlistUrl, setPlaylistUrl] = useState("");
@@ -22,6 +23,19 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [isProcessingPlaylist]);
 
+  useEffect(() => {
+    const saved = window.localStorage.getItem(activePlaylistStorageKey);
+    if (!saved) return;
+
+    const { playlistId, normalizedUrl } = JSON.parse(saved) as ValidatedPlaylist;
+    getStoredPlaylist(playlistId)
+      .then((data) => {
+        setValidatedPlaylist({ playlistId, normalizedUrl });
+        setPlaylistData(data);
+      })
+      .catch(() => window.localStorage.removeItem(activePlaylistStorageKey));
+  }, []);
+
   async function handlePlaylistValidated(playlist: ValidatedPlaylist) {
     setProcessingError(null);
     setPlaylistData(null);
@@ -32,6 +46,7 @@ export default function Home() {
       const data = await ingestPlaylist(playlist.playlistId);
       setValidatedPlaylist(playlist);
       setPlaylistData(data);
+      window.localStorage.setItem(activePlaylistStorageKey, JSON.stringify(playlist));
     } catch (error) {
       setProcessingError(error instanceof Error ? error.message : "We couldn't process this playlist. Try again.");
       throw error;
@@ -41,7 +56,7 @@ export default function Home() {
   }
 
   if (validatedPlaylist && playlistData) {
-    return <ChatWindow playlist={playlistData} playlistUrl={validatedPlaylist.normalizedUrl} onLoadAnother={() => { setPlaylistData(null); setValidatedPlaylist(null); setPlaylistUrl(""); }} />;
+    return <ChatWindow playlist={playlistData} playlistUrl={validatedPlaylist.normalizedUrl} onLoadAnother={() => { window.localStorage.removeItem(activePlaylistStorageKey); setPlaylistData(null); setValidatedPlaylist(null); setPlaylistUrl(""); }} />;
   }
 
   return <main className="landing-page">

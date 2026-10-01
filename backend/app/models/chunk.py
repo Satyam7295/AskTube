@@ -12,7 +12,7 @@ class TranscriptChunk(Base):
     __tablename__ = "transcript_chunks"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    playlist_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    playlist_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     video_id: Mapped[str] = mapped_column(String(11), nullable=False, index=True)
     language_code: Mapped[str] = mapped_column(String(16), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)

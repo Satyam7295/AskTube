@@ -88,9 +88,8 @@ class TranscriptChunker:
         text = " ".join(segment["text"] for segment in segments).strip()
         first = segments[0]
         last = segments[-1]
-        return {
+        chunk = {
             "video_id": video_id,
-            "playlist_id": playlist_id,
             "language_code": language_code,
             "chunk_index": chunk_index,
             "text": text,
@@ -101,3 +100,6 @@ class TranscriptChunker:
             "character_count": len(text),
             "word_count": sum(segment["word_count"] for segment in segments),
         }
+        if playlist_id is not None:
+            chunk["playlist_id"] = playlist_id
+        return chunk

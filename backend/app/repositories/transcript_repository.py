@@ -73,7 +73,8 @@ class TranscriptRepository:
             with self.session_factory() as session:
                 with session.begin():
                     if playlist_id is None:
-                        playlist_id = session.query(Video).filter(Video.video_id == video_id).value(Video.playlist_id)
+                        record = session.query(Video).filter(Video.video_id == video_id).first()
+                        playlist_id = record.playlist_id if record is not None else None
                     session.query(TranscriptChunk).filter(
                         TranscriptChunk.video_id == video_id,
                         TranscriptChunk.language_code == language_code,
@@ -81,7 +82,8 @@ class TranscriptRepository:
                     stored = []
                     for chunk in chunks:
                         payload = dict(chunk)
-                        payload.setdefault("playlist_id", playlist_id)
+                        if playlist_id is not None:
+                            payload.setdefault("playlist_id", playlist_id)
                         stored.append(TranscriptChunk(**payload))
                     session.add_all(stored)
                     session.flush()

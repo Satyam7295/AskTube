@@ -12,11 +12,12 @@ logger = logging.getLogger(__name__)
 
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchValue, VectorParams
+    from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchValue, PayloadSchemaType, VectorParams
 except ImportError:  # pragma: no cover - exercised only when the dependency is absent.
     QdrantClient = None  # type: ignore[assignment]
     Distance = None  # type: ignore[assignment]
     VectorParams = None  # type: ignore[assignment]
+    PayloadSchemaType = None  # type: ignore[assignment]
     FieldCondition = Filter = MatchValue = None  # type: ignore[assignment]
 
 
@@ -70,18 +71,39 @@ class QdrantService:
             collection = None
 
         if collection is not None:
+            self._ensure_payload_indexes()
             return collection
 
         if VectorParams is None or Distance is None:
             raise QdrantConfigurationError("Qdrant client dependency is not installed.")
 
         try:
-            return self.client.create_collection(
+            collection = self.client.create_collection(
                 collection_name=self.settings.qdrant_collection_name,
                 vectors_config=VectorParams(size=self.settings.embedding_dimension, distance=Distance.COSINE),
             )
+            self._ensure_payload_indexes()
+            return collection
         except Exception as error:
             raise QdrantConfigurationError("Qdrant collection could not be created.") from error
+
+    def _ensure_payload_indexes(self) -> None:
+        if not hasattr(self.client, "create_payload_index"):
+            return
+        if PayloadSchemaType is None:
+            raise QdrantConfigurationError("Qdrant client dependency is not installed.")
+        for field_name in ("playlist_id", "video_id"):
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.settings.qdrant_collection_name,
+                    field_name=field_name,
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+            except Exception as error:
+                if "already exists" not in str(error).lower():
+                    raise QdrantConfigurationError(
+                        f"Qdrant payload index could not be created for '{field_name}'."
+                    ) from error
 
     def validate_vector(self, vector: Sequence[float] | None) -> list[float]:
         if not isinstance(vector, (list, tuple)) or not vector:
@@ -199,6 +221,8 @@ class QdrantService:
         query_vector = self.validate_vector(vector)
         if limit < 1:
             raise QdrantVectorValidationError("Search limit must be positive.")
+        if hasattr(self.client, "create_payload_index"):
+            self.ensure_collection()
 
         query_filter = None
         must_conditions: list[Any] = []

@@ -6,6 +6,7 @@ class RetrievedSource(BaseModel):
 
     chunk_id: int
     video_id: str
+    playlist_id: str | None = None
     score: float
     text: str
     start_time: float
