@@ -7,6 +7,28 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import get_settings
 from app.db.base import Base
 
+# Import every mapped model before SQLAlchemy configures relationships.
+from app.models import chunk, indexing, playlist, transcript, video  # noqa: F401
+
+DATABASE_CONNECT_TIMEOUT_SECONDS = 10
+DATABASE_STATEMENT_TIMEOUT_MILLISECONDS = 15000
+DATABASE_LOCK_TIMEOUT_MILLISECONDS = 5000
+
+
+def _engine_options(database_url: str) -> dict:
+    if database_url.startswith(("postgresql://", "postgresql+")):
+        return {
+            "connect_args": {
+                "connect_timeout": DATABASE_CONNECT_TIMEOUT_SECONDS,
+                "options": (
+                    f"-c statement_timeout={DATABASE_STATEMENT_TIMEOUT_MILLISECONDS} "
+                    f"-c lock_timeout={DATABASE_LOCK_TIMEOUT_MILLISECONDS}"
+                ),
+            },
+            "pool_timeout": DATABASE_CONNECT_TIMEOUT_SECONDS,
+        }
+    return {}
+
 
 class DatabaseConfigurationError(RuntimeError):
     pass
@@ -22,7 +44,8 @@ def get_database_url() -> str:
 
 
 def get_engine() -> Engine:
-    return create_engine(get_database_url(), pool_pre_ping=True, future=True)
+    database_url = get_database_url()
+    return create_engine(database_url, pool_pre_ping=True, future=True, **_engine_options(database_url))
 
 
 engine = None
@@ -30,7 +53,7 @@ SessionLocal = None
 
 try:
     database_url = get_database_url()
-    engine = create_engine(database_url, pool_pre_ping=True, future=True)
+    engine = create_engine(database_url, pool_pre_ping=True, future=True, **_engine_options(database_url))
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 except DatabaseConfigurationError:
     engine = None
@@ -51,12 +74,11 @@ def _migrate_index_status() -> None:
     if engine is None:
         return
     columns = {column["name"] for column in inspect(engine).get_columns("playlist_index_status")}
-    if "processed_videos" in columns:
-        return
     with engine.begin() as connection:
-        connection.execute(
-            text("ALTER TABLE playlist_index_status ADD COLUMN processed_videos INTEGER NOT NULL DEFAULT 0")
-        )
+        if "processed_videos" not in columns:
+            connection.execute(text("ALTER TABLE playlist_index_status ADD COLUMN processed_videos INTEGER NOT NULL DEFAULT 0"))
+        if "video_diagnostics" not in columns:
+            connection.execute(text("ALTER TABLE playlist_index_status ADD COLUMN video_diagnostics JSON NOT NULL DEFAULT '[]'"))
 
 
 def get_session_factory():

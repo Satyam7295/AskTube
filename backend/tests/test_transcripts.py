@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +13,8 @@ from app.db.base import Base
 from app.models.transcript import Transcript
 from app.repositories.transcript_repository import TranscriptDatabaseError, TranscriptRepository
 from app.services.transcript.transcript_service import TranscriptService
+from app.core.config import Settings
+from app.services.transcript.transcript_service import YouTubeTranscriptProvider
 
 
 VIDEO_ID = "dQw4w9WgXcQ"
@@ -108,7 +110,53 @@ def test_provider_failure_returns_bad_gateway() -> None:
         response = client().get(f"/api/videos/{VIDEO_ID}/transcript")
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Transcript provider request failed."
+    assert response.json()["detail"].startswith("TRANSIENT_PROVIDER_ERROR:")
+    assert "video_id=dQw4w9WgXcQ" in response.json()["detail"]
+    assert "provider down" in response.json()["detail"]
+
+
+def test_ip_block_is_classified_without_retrying() -> None:
+    blocked = type("IpBlocked", (Exception,), {})
+    with patch("app.services.transcript.transcript_service.YouTubeTranscriptApi") as api:
+        api.return_value.list.side_effect = blocked("YouTube blocked this IP")
+        with pytest.raises(Exception) as raised:
+            TranscriptService(transcript_api=api.return_value).get_transcript(VIDEO_ID)
+
+    assert raised.value.__class__.__name__ == "TranscriptProviderError"
+    assert raised.value.error_code == "PROVIDER_AUTH_ERROR"
+    assert str(raised.value) == "PROVIDER_AUTH_ERROR: YouTube blocked transcript access for this deployment."
+    assert api.return_value.list.call_count == 1
+
+
+def test_transient_provider_failure_retries_then_succeeds() -> None:
+    transcript = FakeTranscript("en", True, [{"text": "Retry worked", "start": 0.0, "duration": 1.0}])
+    transient = TimeoutError("temporary timeout")
+    with patch("app.services.transcript.transcript_service.time.sleep") as sleep:
+        api = MagicMock()
+        api.list.side_effect = [transient, [transcript]]
+        response = TranscriptService(transcript_api=api).get_transcript(VIDEO_ID)
+
+    assert response.total_segments == 1
+    assert api.list.call_count == 2
+    assert sleep.call_count == 1
+
+
+def test_cached_transcript_bypasses_provider() -> None:
+    repository = TranscriptRepository(database_module.get_session_factory())
+    repository.upsert(
+        {
+            "video_id": VIDEO_ID,
+            "language_code": "en",
+            "language_name": "English",
+            "is_generated": True,
+            "segments": [{"text": "Cached", "start": 0.0, "duration": 1.0}],
+        }
+    )
+    api = type("Api", (), {"list": lambda *_args: (_ for _ in ()).throw(AssertionError("provider called"))})()
+
+    response = TranscriptService(transcript_api=api, transcript_repository=repository).get_transcript(VIDEO_ID)
+
+    assert response.segments[0].text == "Cached"
 
 
 def test_invalid_video_id_returns_validation_error() -> None:
@@ -133,6 +181,42 @@ def test_language_selection_is_deterministic() -> None:
 def test_service_rejects_invalid_video_id() -> None:
     with pytest.raises(ValueError, match="Invalid YouTube video ID"):
         TranscriptService(transcript_api=object()).get_transcript("invalid")
+
+
+def test_proxy_configuration_uses_generic_proxy_config() -> None:
+    with patch("app.services.transcript.transcript_service.YouTubeTranscriptApi") as api, patch(
+        "app.services.transcript.transcript_service.GenericProxyConfig"
+    ) as proxy:
+        YouTubeTranscriptProvider(
+            Settings(
+                transcript_proxy_http="http://proxy.example:8080",
+                transcript_proxy_https="https://proxy.example:8443",
+            )
+        )
+
+    proxy.assert_called_once_with(
+        http_url="http://proxy.example:8080",
+        https_url="https://proxy.example:8443",
+    )
+    api.assert_called_once()
+    assert api.call_args.kwargs["proxy_config"] is proxy.return_value
+
+
+def test_http_429_is_normalized_without_retrying_when_retries_disabled() -> None:
+    rate_limited = type("TooManyRequests", (Exception,), {"status_code": 429})
+    api = MagicMock()
+    api.list.side_effect = rate_limited("too many requests")
+
+    with pytest.raises(Exception) as raised:
+        TranscriptService(
+            transcript_api=api,
+            settings=Settings(transcript_max_retries=1),
+        ).get_transcript(VIDEO_ID)
+
+    assert raised.value.__class__.__name__ == "TranscriptRateLimitError"
+    assert raised.value.error_code == "PROVIDER_RATE_LIMIT"
+    assert str(raised.value) == "PROVIDER_RATE_LIMIT: YouTube rate-limited transcript access."
+    assert api.list.call_count == 1
 
 
 def test_transcript_is_persisted_with_timing_and_metadata() -> None:

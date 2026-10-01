@@ -52,8 +52,20 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .conversation-header h2 { margin: 10px 0 0; font-size: clamp(31px, 4vw, 50px); line-height: .95; letter-spacing: -.06em; }
 .ready-label { display: inline-flex; align-items: center; gap: 8px; padding-top: 6px; color: var(--green); font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .ready-label span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.ready-label.status-pending, .ready-label.status-indexing { color: var(--blue); }
+.ready-label.status-pending span, .ready-label.status-indexing span { background: var(--blue); }
+.ready-label.status-failed { color: #a13939; }
+.ready-label.status-failed span { background: #a13939; }
 .conversation-intro { margin: 24px 0 0; color: var(--muted); font-family: Arial, sans-serif; font-size: 13px; line-height: 1.55; flex-shrink: 0; }
 .conversation-intro strong { display: block; margin-bottom: 3px; color: var(--ink); font-family: Georgia, "Times New Roman", serif; font-size: 19px; letter-spacing: -.02em; }
+.indexing-progress { height: 7px; max-width: 470px; margin-top: 12px; overflow: hidden; background: #e8ebef; }
+.indexing-progress-fill { height: 100%; background: var(--blue); transition: width .35s ease; }
+.indexing-progress-percent { display: block; margin-top: 5px; color: var(--muted); font-family: Arial, sans-serif; font-size: 10px; font-weight: 700; }
+.indexing-progress-detail { margin: 4px 0 0; color: var(--muted); font-family: Arial, sans-serif; font-size: 12px; }
+.indexing-warning { margin: 14px 0 0; color: var(--faint); font-family: Arial, sans-serif; font-size: 12px; }
+.indexing-blocked-state { display: grid; gap: 2px; max-width: 470px; margin-top: 14px; border-left: 3px solid var(--blue); background: var(--blue-soft); padding: 10px 12px; color: var(--muted); font-family: Arial, sans-serif; font-size: 12px; }
+.indexing-blocked-state strong { color: var(--ink); font-size: 13px; }
+.indexing-blocked-state span { color: var(--muted); }
 .conversation-body { flex: 1; min-height: 0; overflow-y: auto; padding: 52px 0 30px; }
 .empty-prompt { display: flex; align-items: center; gap: 9px; color: var(--faint); font-family: Arial, sans-serif; font-size: 12px; }
 .empty-prompt svg { color: var(--blue); }
@@ -97,6 +109,20 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .landing-steps { display: flex; flex-wrap: wrap; gap: 18px 30px; margin-top: 33px; color: var(--muted); font-family: Arial, sans-serif; font-size: 11px; }
 .landing-steps strong { color: var(--ink); }
 
+.modal-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(32, 36, 43, .24); }
+.transcript-modal { width: min(100%, 450px); border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 20px 60px rgba(32, 36, 43, .16); padding: 26px 27px 23px; }
+.modal-icon { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; color: var(--blue); background: var(--blue-soft); }
+.transcript-modal h2 { margin: 17px 0 10px; color: var(--ink); font-size: 24px; line-height: 1.08; letter-spacing: -.045em; }
+.transcript-modal p { margin: 0; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; }
+.modal-secondary { margin-top: 8px !important; color: var(--muted); }
+.modal-reassurance { margin-top: 18px !important; color: var(--faint); font-size: 12px !important; }
+.modal-actions { display: flex; align-items: center; gap: 16px; margin-top: 23px; }
+.modal-primary, .modal-secondary-action { min-height: 40px; border-radius: 9px; padding: 0 15px; font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; }
+.modal-primary { border: 1px solid var(--blue); color: white; background: var(--blue); }
+.modal-primary:hover { background: #2858d9; }
+.modal-secondary-action { border: 0; color: var(--muted); background: transparent; }
+.modal-secondary-action:hover { color: var(--ink); }
+
 @media (max-width: 800px) {
   .asktube-shell { display: block; }
   .knowledge-panel { border-right: 0; border-bottom: 1px solid var(--line); padding: 25px 22px 28px; }
@@ -117,4 +143,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .user-message { max-width: 92%; }
   .landing-page { padding: 27px 22px; }
   .landing-mark { margin-bottom: 20vh; }
+  .modal-backdrop { padding: 16px; }
+  .transcript-modal { padding: 23px 21px 20px; }
+  .transcript-modal h2 { font-size: 22px; }
 }

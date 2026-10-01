@@ -109,6 +109,8 @@ class PlaylistService:
         response.skipped_videos = report.skipped_videos
         response.videos_without_transcripts = report.skipped_videos
         response.failed_videos = report.failed_videos
+        response.last_error = getattr(report, "last_error", None)
+        response.video_diagnostics = getattr(report, "video_diagnostics", None) or []
 
     @staticmethod
     def _to_http_url(value: str | None):

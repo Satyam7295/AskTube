@@ -143,7 +143,7 @@ def test_playlist_ingestion_invokes_indexing_service():
     repository = FakePlaylistRepository([])
     indexer = SimpleNamespace(
         prepare_indexing=lambda playlist_id: SimpleNamespace(
-            status="pending", processed_videos=0, indexed_videos=0, skipped_videos=0, failed_videos=0
+            status="PENDING", processed_videos=0, indexed_videos=0, skipped_videos=0, failed_videos=0
         )
     )
     youtube = SimpleNamespace(
@@ -161,7 +161,7 @@ def test_playlist_ingestion_invokes_indexing_service():
     import asyncio
 
     response = asyncio.run(service.get_playlist(PLAYLIST_ID))
-    assert response.indexing_status == "pending"
+    assert response.indexing_status == "PENDING"
     assert response.indexed_videos == 0
 
 
@@ -169,11 +169,11 @@ def test_multiple_videos_are_indexed_and_payloads_keep_playlist_and_video():
     indexer, repository, _, embedding, qdrant = make_indexer([video("video_one1", 0), video("video_two2", 1)])
     report = indexer.index_playlist(PLAYLIST_ID)
 
-    assert report.status == "ready"
+    assert report.status == "INDEXING_COMPLETED"
     assert report.indexed_videos == 2
     assert {point["video_id"] for point in qdrant.points} == {"video_one1", "video_two2"}
     assert all(point["playlist_id"] == PLAYLIST_ID for point in qdrant.points)
-    assert repository.status.status == "ready"
+    assert repository.status.status == "INDEXING_COMPLETED"
     assert embedding.calls == 2
 
 
@@ -183,7 +183,7 @@ def test_missing_transcript_does_not_abort_other_videos_and_reports_partial():
     )
     report = indexer.index_playlist(PLAYLIST_ID)
 
-    assert report.status == "partially_indexed"
+    assert report.status == "INDEXING_PARTIAL"
     assert report.skipped_videos == 1
     assert report.indexed_videos == 1
     assert [point["video_id"] for point in qdrant.points] == ["video_two2"]
@@ -195,7 +195,7 @@ def test_cached_embeddings_are_reused_and_ready_reingestion_is_idempotent():
     first = indexer.index_playlist(PLAYLIST_ID)
     second = indexer.index_playlist(PLAYLIST_ID)
 
-    assert first.status == second.status == "ready"
+    assert first.status == second.status == "INDEXING_COMPLETED"
     assert embedding.calls == 1
     assert transcript_repository.save_calls == 1
     assert len(qdrant.points) == 1
@@ -205,8 +205,87 @@ def test_provider_failure_does_not_report_ready():
     indexer, repository, _, _, _ = make_indexer([video("video_one1")], unavailable=("video_one1",))
     report = indexer.index_playlist(PLAYLIST_ID)
 
-    assert report.status == "failed"
-    assert repository.status.status == "failed"
+    assert report.status == "INDEXING_FAILED"
+    assert repository.status.status == "INDEXING_FAILED"
+    assert repository.status.failed_videos == 0
+    assert repository.status.skipped_videos == 1
+    assert repository.status.video_diagnostics[0]["status"] == "no_transcript"
+
+
+def test_transcript_provider_exception_is_failed_with_transcript_stage():
+    indexer, repository, _, _, _ = make_indexer([video("video_one1")])
+    indexer.transcript_service = FakeTranscriptService()
+    indexer.transcript_service.get_transcript = lambda _video_id: (_ for _ in ()).throw(
+        RuntimeError("YouTube IP blocked")
+    )
+
+    report = indexer.index_playlist(PLAYLIST_ID)
+
+    assert report.failed_videos == 1
+    assert report.skipped_videos == 0
+    assert repository.status.video_diagnostics[0]["stage"] == "transcript"
+    assert "YouTube IP blocked" in repository.status.video_diagnostics[0]["error"]
+
+
+def test_embedding_failure_does_not_stop_remaining_videos():
+    indexer, repository, _, _, qdrant = make_indexer([video("video_one1"), video("video_two2")])
+    original = indexer.embedding_service.embed_chunks
+    calls = 0
+
+    def fail_once(chunks):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("model unavailable")
+        return original(chunks)
+
+    indexer.embedding_service.embed_chunks = fail_once
+    report = indexer.index_playlist(PLAYLIST_ID)
+
+    assert report.failed_videos == 1
+    assert report.indexed_videos == 1
+    assert report.status == "INDEXING_PARTIAL"
+    assert repository.status.video_diagnostics[0]["stage"] == "embedding"
+    assert [point["video_id"] for point in qdrant.points] == ["video_two2"]
+
+
+def test_qdrant_failure_is_recorded_with_qdrant_stage():
+    indexer, repository, _, _, _ = make_indexer([video("video_one1")])
+
+    class BrokenQdrant:
+        def sync_chunks(self, chunks, embeddings):
+            raise RuntimeError("Qdrant unavailable")
+
+    indexer.qdrant_service = BrokenQdrant()
+    report = indexer.index_playlist(PLAYLIST_ID)
+
+    assert report.indexed_videos == 0
+    assert report.failed_videos == 1
+    assert repository.status.video_diagnostics[0]["stage"] == "qdrant"
+    assert "Qdrant unavailable" in repository.status.video_diagnostics[0]["error"]
+
+
+def test_failed_embedding_persistence_does_not_poison_next_video():
+    indexer, repository, transcript_repository, _, qdrant = make_indexer(
+        [video("video_one1"), video("video_two2")]
+    )
+    original = transcript_repository.save_embeddings
+    calls = 0
+
+    def fail_once(embeddings, model_name, dimension):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("database write failed")
+        return original(embeddings, model_name, dimension)
+
+    transcript_repository.save_embeddings = fail_once
+    report = indexer.index_playlist(PLAYLIST_ID)
+
+    assert report.failed_videos == 1
+    assert report.indexed_videos == 1
+    assert len(qdrant.points) == 1
+    assert repository.status.processed_videos == 2
 
 
 def test_duplicate_background_jobs_are_prevented():
@@ -224,7 +303,7 @@ def test_progress_transitions_from_indexing_to_ready():
 
     report = indexer.index_playlist(PLAYLIST_ID)
 
-    assert report.status == "ready"
+    assert report.status == "INDEXING_COMPLETED"
     assert report.processed_videos == 2
     assert repository.status.processed_videos == 2
     assert repository.status.indexed_videos == 2
@@ -256,7 +335,7 @@ def test_playlist_route_returns_pending_and_queues_background_job(monkeypatch):
     response = PlaylistResponse(
         playlist=PlaylistMetadata(playlist_id=PLAYLIST_ID, title="Test", description=""),
         videos=[],
-        indexing_status="pending",
+        indexing_status="PENDING",
     )
     scheduled = []
 
@@ -274,5 +353,5 @@ def test_playlist_route_returns_pending_and_queues_background_job(monkeypatch):
     tasks = BackgroundTasks()
     returned = asyncio.run(playlists_api.get_playlist(PLAYLIST_ID, tasks))
 
-    assert returned.indexing_status == "pending"
+    assert returned.indexing_status == "PENDING"
     assert scheduled == [(PLAYLIST_ID, tasks)]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from threading import Lock
 from dataclasses import dataclass
 from typing import Any
@@ -13,6 +14,7 @@ from app.services.qdrant_service import QdrantConfigurationError, QdrantService
 from app.services.transcript.chunk_service import TranscriptChunkService
 from app.services.transcript.transcript_service import (
     TranscriptNotAvailableError,
+    TranscriptProviderError,
     TranscriptService,
     VideoUnavailableError,
 )
@@ -29,6 +31,7 @@ class PlaylistIndexReport:
     skipped_videos: int
     failed_videos: int
     last_error: str | None = None
+    video_diagnostics: list[dict[str, str]] | None = None
 
 
 class PlaylistIndexingService:
@@ -58,22 +61,30 @@ class PlaylistIndexingService:
         videos = self.playlist_repository.get_playlist_videos(playlist_id)
         total_videos = len([video for video in videos if video.available])
         existing = self.playlist_repository.get_index_status(playlist_id)
-        if existing is not None and existing.status in {"indexing", "ready", "partially_indexed"}:
+        if existing is not None and existing.status in {
+            "INDEXING",
+            "INDEXING_COMPLETED",
+            "INDEXING_PARTIAL",
+            "indexing",
+            "ready",
+            "partially_indexed",
+        }:
             return self._report(existing)
 
         self.playlist_repository.save_index_status(
             playlist_id,
             {
-                "status": "pending",
+                "status": "PENDING",
                 "total_videos": total_videos,
                 "processed_videos": 0,
                 "indexed_videos": 0,
                 "skipped_videos": 0,
                 "failed_videos": 0,
                 "last_error": None,
+                "video_diagnostics": [],
             },
         )
-        return PlaylistIndexReport("pending", total_videos, 0, 0, 0, 0, None)
+        return PlaylistIndexReport("PENDING", total_videos, 0, 0, 0, 0, None)
 
     def schedule_indexing(self, playlist_id: str) -> bool:
         with self._jobs_lock:
@@ -95,13 +106,13 @@ class PlaylistIndexingService:
         videos = self.playlist_repository.get_playlist_videos(playlist_id)
         total_videos = len([video for video in videos if video.available])
         existing = self.playlist_repository.get_index_status(playlist_id)
-        if existing is not None and existing.status == "ready" and existing.total_videos == total_videos:
+        if existing is not None and existing.status in {"INDEXING_COMPLETED", "ready"} and existing.total_videos == total_videos:
             return self._report(existing)
 
         self.playlist_repository.save_index_status(
             playlist_id,
             {
-                "status": "indexing",
+                "status": "INDEXING",
                 "total_videos": total_videos,
                 "processed_videos": 0,
                 "indexed_videos": 0,
@@ -115,13 +126,16 @@ class PlaylistIndexingService:
         skipped = 0
         failed = 0
         errors: list[str] = []
+        diagnostics: list[dict[str, str]] = []
 
         for video in videos:
             if not video.available:
                 skipped += 1
                 continue
+            stage = "transcript"
             try:
                 transcript = self.transcript_service.get_transcript(video.video_id)
+                stage = "chunks"
                 self.chunk_service.get_chunks(
                     video.video_id,
                     transcript.language,
@@ -129,10 +143,9 @@ class PlaylistIndexingService:
                 )
                 chunks = self._stored_chunks(video.video_id, transcript.language, playlist_id)
                 if not chunks:
-                    skipped += 1
-                    errors.append(f"{video.video_id}: transcript produced no chunks")
-                    continue
+                    raise RuntimeError("Transcript produced no chunks.")
 
+                stage = "embedding"
                 pending = [
                     chunk
                     for chunk in chunks
@@ -154,6 +167,12 @@ class PlaylistIndexingService:
                     if chunk.embedding is not None
                 }
                 embeddings = {chunk_id: vector for chunk_id, vector in embeddings.items() if vector is not None}
+                if len(embeddings) != len(chunks):
+                    raise RuntimeError(
+                        f"Embedding set is incomplete: {len(embeddings)} of {len(chunks)} chunks have vectors."
+                    )
+
+                stage = "qdrant"
                 qdrant_service = self.qdrant_service or QdrantService(self.settings)
                 sync = qdrant_service.sync_chunks(chunks, embeddings)
                 if sync.get("upserted", 0) != len(chunks):
@@ -165,21 +184,50 @@ class PlaylistIndexingService:
                     "Indexed playlist video",
                     extra={"playlist_id": playlist_id, "video_id": video.video_id, "status": "indexed", "chunks": len(chunks)},
                 )
-            except (TranscriptNotAvailableError, VideoUnavailableError) as error:
+            except TranscriptNotAvailableError as error:
                 skipped += 1
-                errors.append(f"{video.video_id}: {error}")
+                diagnostic = self._diagnostic(video, "no_transcript", "transcript", error)
+                diagnostics.append(diagnostic)
+                errors.append(self._format_diagnostic(diagnostic))
                 logger.warning("Playlist video skipped: playlist_id=%s video_id=%s reason=%s", playlist_id, video.video_id, error)
             except Exception as error:
                 failed += 1
-                errors.append(f"{video.video_id}: {error}")
-                logger.exception("Playlist video indexing failed: playlist_id=%s video_id=%s", playlist_id, video.video_id)
+                diagnostic = self._diagnostic(video, "failed", stage, error)
+                diagnostics.append(diagnostic)
+                errors.append(self._format_diagnostic(diagnostic))
+                logger.exception(
+                    "Playlist video indexing failed: playlist_id=%s video_id=%s title=%s stage=%s",
+                    playlist_id,
+                    video.video_id,
+                    video.title,
+                    stage,
+                )
             finally:
                 if video.available:
                     processed += 1
-                    self._save_progress(playlist_id, total_videos, processed, indexed, skipped, failed, errors)
+                    self._save_progress(
+                        playlist_id, total_videos, processed, indexed, skipped, failed, errors, diagnostics
+                    )
+                    if self.settings.transcript_request_delay_seconds > 0:
+                        time.sleep(self.settings.transcript_request_delay_seconds)
 
-        status = "ready" if total_videos > 0 and indexed == total_videos else "partially_indexed" if indexed else "failed"
-        report = PlaylistIndexReport(status, total_videos, processed, indexed, skipped, failed, "; ".join(errors)[:4000] or None)
+        status = (
+            "INDEXING_COMPLETED"
+            if total_videos > 0 and indexed == total_videos
+            else "INDEXING_PARTIAL"
+            if indexed
+            else "INDEXING_FAILED"
+        )
+        report = PlaylistIndexReport(
+            status,
+            total_videos,
+            processed,
+            indexed,
+            skipped,
+            failed,
+            "; ".join(errors)[:4000] or None,
+            diagnostics,
+        )
         self.playlist_repository.save_index_status(playlist_id, report.__dict__)
         return report
 
@@ -192,17 +240,19 @@ class PlaylistIndexingService:
         skipped: int,
         failed: int,
         errors: list[str],
+        diagnostics: list[dict[str, str]],
     ) -> None:
         self.playlist_repository.save_index_status(
             playlist_id,
             {
-                "status": "indexing",
+                "status": "INDEXING",
                 "total_videos": total_videos,
                 "processed_videos": processed,
                 "indexed_videos": indexed,
                 "skipped_videos": skipped,
                 "failed_videos": failed,
                 "last_error": "; ".join(errors)[:4000] or None,
+                "video_diagnostics": diagnostics,
             },
         )
 
@@ -214,13 +264,50 @@ class PlaylistIndexingService:
         return self._transcript_repository.get_chunks(video_id, language, playlist_id)
 
     @staticmethod
+    def _root_exception(error: Exception) -> Exception:
+        root = error
+        while root.__cause__ is not None:
+            root = root.__cause__
+        return root
+
+    @classmethod
+    def _diagnostic(cls, video: Any, status: str, stage: str, error: Exception) -> dict[str, str]:
+        root = error if isinstance(error, TranscriptProviderError) else cls._root_exception(error)
+        if isinstance(error, TranscriptProviderError) and error.error_code == "PROVIDER_AUTH_ERROR":
+            message = "Transcript unavailable — YouTube blocked transcript access."
+        elif isinstance(error, TranscriptProviderError) and error.error_code == "PROVIDER_RATE_LIMIT":
+            message = "Transcript unavailable — YouTube rate-limited transcript access."
+        else:
+            message = str(root).strip() or str(error).strip() or type(error).__name__
+        return {
+            "video_id": str(video.video_id),
+            "title": str(video.title),
+            "status": status,
+            "error": message[:240],
+            "technical_details": f"{type(root).__name__}: {str(root).strip()}"[:2000],
+            "stage": stage,
+        }
+
+    @staticmethod
+    def _format_diagnostic(diagnostic: dict[str, str]) -> str:
+        return f"{diagnostic['video_id']} [{diagnostic['stage']}]: {diagnostic['error']}"
+
+    @staticmethod
     def _report(status: Any) -> PlaylistIndexReport:
+        normalized_status = {
+            "pending": "PENDING",
+            "indexing": "INDEXING",
+            "ready": "INDEXING_COMPLETED",
+            "partially_indexed": "INDEXING_PARTIAL",
+            "failed": "INDEXING_FAILED",
+        }.get(status.status, status.status)
         return PlaylistIndexReport(
-            status.status,
+            normalized_status,
             status.total_videos,
             status.processed_videos,
             status.indexed_videos,
             status.skipped_videos,
             status.failed_videos,
             status.last_error,
+            getattr(status, "video_diagnostics", None) or [],
         )

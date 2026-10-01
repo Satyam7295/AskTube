@@ -67,6 +67,20 @@ def test_chunks_are_persisted_with_timestamp_boundaries() -> None:
         assert session.query(TranscriptChunk).count() == 2
 
 
+def test_playlist_id_survives_chunk_creation_and_repository_filtering() -> None:
+    repository = TranscriptRepository(database_module.get_session_factory())
+    repository.upsert(stored_transcript())
+    service = TranscriptChunkService(
+        repository, TranscriptChunker(ChunkingConfig(target_words=10, overlap_words=0))
+    )
+
+    response = service.get_chunks(VIDEO_ID, playlist_id="PL_TEST")
+
+    assert response.chunks[0].playlist_id == "PL_TEST"
+    assert repository.get_chunks(VIDEO_ID, "en", "PL_TEST")[0].playlist_id == "PL_TEST"
+    assert repository.get_chunks(VIDEO_ID, "en", "OTHER") == []
+
+
 def test_repeated_generation_replaces_without_duplicates() -> None:
     repository = TranscriptRepository(database_module.get_session_factory())
     repository.upsert(stored_transcript())

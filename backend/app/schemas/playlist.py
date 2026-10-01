@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class PlaylistMetadata(BaseModel):
@@ -29,9 +29,11 @@ class PlaylistResponse(BaseModel):
     playlist: PlaylistMetadata
     videos: list[PlaylistVideo]
     total_videos: int = 0
-    indexing_status: str = "pending"
+    indexing_status: str = "PENDING"
     processed_videos: int = 0
     indexed_videos: int = 0
     skipped_videos: int = 0
     videos_without_transcripts: int = 0
     failed_videos: int = 0
+    last_error: str | None = None
+    video_diagnostics: list[dict[str, str]] = Field(default_factory=list)

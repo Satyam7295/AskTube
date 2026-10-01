@@ -75,10 +75,13 @@ class TranscriptRepository:
                     if playlist_id is None:
                         record = session.query(Video).filter(Video.video_id == video_id).first()
                         playlist_id = record.playlist_id if record is not None else None
-                    session.query(TranscriptChunk).filter(
+                    delete_query = session.query(TranscriptChunk).filter(
                         TranscriptChunk.video_id == video_id,
                         TranscriptChunk.language_code == language_code,
-                    ).delete(synchronize_session=False)
+                    )
+                    if playlist_id is not None:
+                        delete_query = delete_query.filter(TranscriptChunk.playlist_id == playlist_id)
+                    delete_query.delete(synchronize_session=False)
                     stored = []
                     for chunk in chunks:
                         payload = dict(chunk)
@@ -91,7 +94,9 @@ class TranscriptRepository:
         except (DatabaseConfigurationError, SQLAlchemyError) as error:
             raise TranscriptDatabaseError("Transcript chunk persistence failed.") from error
 
-    def get_chunks(self, video_id: str, language_code: str | None = None) -> list[TranscriptChunk]:
+    def get_chunks(
+        self, video_id: str, language_code: str | None = None, playlist_id: str | None = None
+    ) -> list[TranscriptChunk]:
         try:
             with self.session_factory() as session:
                 query = session.query(TranscriptChunk).filter(TranscriptChunk.video_id == video_id)
@@ -99,6 +104,8 @@ class TranscriptRepository:
                     query = query.filter(TranscriptChunk.language_code == language_code)
                 else:
                     query = query.filter(TranscriptChunk.language_code == "en")
+                if playlist_id is not None:
+                    query = query.filter(TranscriptChunk.playlist_id == playlist_id)
                 return query.order_by(TranscriptChunk.chunk_index.asc()).all()
         except (DatabaseConfigurationError, SQLAlchemyError) as error:
             raise TranscriptDatabaseError("Transcript chunk read failed.") from error

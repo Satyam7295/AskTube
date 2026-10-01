@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     rag_max_sources: int = 5
     groq_api_key: str | None = None
     groq_model: str = "llama-3.3-70b-versatile"
+    transcript_proxy_http: str | None = None
+    transcript_proxy_https: str | None = None
+    transcript_provider_timeout: float = 30.0
+    transcript_max_retries: int = 3
+    transcript_retry_backoff_seconds: float = 0.5
+    transcript_request_delay_seconds: float = 0.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

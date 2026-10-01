@@ -2,6 +2,7 @@ from pydantic import BaseModel
 
 
 class TranscriptChunk(BaseModel):
+    playlist_id: str | None = None
     video_id: str
     language_code: str
     chunk_index: int

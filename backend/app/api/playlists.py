@@ -1,6 +1,7 @@
 import re
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.db.database import DatabaseConfigurationError
@@ -21,7 +22,7 @@ async def get_playlist(playlist_id: str, background_tasks: BackgroundTasks) -> P
         response = await service.get_playlist(playlist_id)
         service.schedule_indexing(playlist_id, background_tasks)
         return response
-    except (DatabaseConfigurationError, ValueError) as error:
+    except (DatabaseConfigurationError, SQLAlchemyError, ValueError) as error:
         raise HTTPException(
             status_code=503,
             detail="Playlist persistence is unavailable. Configure DATABASE_URL before retrying.",
@@ -39,10 +40,10 @@ async def get_stored_playlist(playlist_id: str, background_tasks: BackgroundTask
         response = service.get_persisted_playlist(playlist_id)
         if response is None:
             raise HTTPException(status_code=404, detail="Playlist has not been indexed yet.")
-        if response.indexing_status in {"pending", "indexing"}:
+        if response.indexing_status in {"PENDING", "INDEXING", "pending", "indexing"}:
             service.schedule_indexing(playlist_id, background_tasks)
         return response
-    except (DatabaseConfigurationError, ValueError) as error:
+    except (DatabaseConfigurationError, SQLAlchemyError, ValueError) as error:
         raise HTTPException(
             status_code=503,
             detail="Playlist retrieval is unavailable. Configure DATABASE_URL before retrying.",
