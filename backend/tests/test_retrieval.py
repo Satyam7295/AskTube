@@ -20,6 +20,9 @@ class FakeEmbeddingModel:
                 float("database" in lowered or "postgresql" in lowered),
             ] + [0.0] * 381
             length = math.sqrt(sum(value * value for value in vector))
+            if length == 0:
+                vector[0] = 1.0
+                length = 1.0
             vectors.append([value / length for value in vector])
         return vectors
 

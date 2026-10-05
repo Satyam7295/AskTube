@@ -1,0 +1,220 @@
+ASKTUBE FULL SYSTEM TEST REPORT V2
+
+Date/time: 2026-10-05T17:10:08+05:30
+Git commit: 5c66aab
+Python: 3.14.2 (.venv)
+Node: v20.17.0
+npm: 10.8.2
+
+1. EXECUTIVE SUMMARY
+
+The confirmed production failure was fixed. sentence-transformers was installed
+into the project .venv used to run Uvicorn. EmbeddingService loaded the configured
+all-MiniLM-L6-v2 model and generated a 384-dimensional finite unit-norm vector.
+
+The backend test fixture that divided by zero for an unknown query was corrected.
+All 118 backend tests pass. Frontend TypeScript, ESLint, and production build
+also pass. The live backend and frontend were restarted and the reproducible
+21-video playlist completed indexing with 21 indexed, 0 failed, and 0 skipped.
+
+Three playlist-scoped real questions completed the complete retrieval, context,
+LLM, answer, and sources path. Browser verification confirmed the answer and
+source rendering. The original 11-video playlist remains unverified because its
+ID was not present in the repository or supplied diagnostic.
+
+2. CHANGES MADE
+
+File: backend/tests/test_retrieval.py
+Change: Added a deterministic non-zero fallback vector in FakeEmbeddingModel.
+Reason: Prevent test-only division by zero without weakening production validation.
+
+File: backend/app/models/indexing.py
+Change: Added the persisted transcript_access_blocked Boolean column.
+Reason: Runtime indexing reports already write and read this intended state.
+
+File: backend/app/db/database.py
+Change: Added a safe startup migration for existing playlist_index_status tables.
+Reason: Existing PostgreSQL databases receive the new column with a false default.
+
+File: frontend/lib/api/videos.ts
+Change: Added ApiError preserving HTTP status and backend detail for failed asks.
+Reason: Preserve useful diagnostics while retaining a safe user-facing fallback.
+
+File: frontend/components/chat/ChatWindow.tsx
+Change: Log failed asks and show status/detail in development only.
+Reason: Avoid silently swallowing backend errors without exposing internals in
+production.
+
+File: frontend/components/playlist/PlaylistInput.tsx
+Change: Removed an unused catch binding.
+Reason: Resolve the ESLint warning.
+
+File: frontend/package.json
+Change: Replaced deprecated next lint with eslint . and added ESLint packages.
+Reason: Use the current Next.js-compatible command-line lint workflow.
+
+File: frontend/eslint.config.mjs
+Change: Added flat ESLint configuration using eslint-config-next compatibility.
+Reason: Provide non-interactive lint configuration for Next.js 15.
+
+3. ENVIRONMENT
+
+Backend launch: project .venv, started from backend/ with
+..\\.venv\\Scripts\\python.exe -m uvicorn app.main:app
+Backend health: PASS, HTTP 200, {"status":"ok"}
+Frontend: PASS, http://localhost:3000 returned the AskTube application.
+Configured backend environment variables (backend/.env): YOUTUBE_API_KEY,
+DATABASE_URL, QDRANT_URL, QDRANT_API_KEY, QDRANT_COLLECTION_NAME,
+EMBEDDING_DIMENSION, GROQ_API_KEY, and GROQ_MODEL are PRESENT. Values were not
+printed.
+
+4. DEPENDENCY CHECK
+
+backend/requirements.txt: installed with
+\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt
+sentence_transformers import: PASS
+sentence-transformers version: 5.7.0
+Model load: PASS
+Model: configured sentence-transformers/all-MiniLM-L6-v2
+Embedding dimension: 384
+Finite values: PASS
+L2 norm: approximately 1.0
+
+5. BACKEND TEST RESULTS
+
+Command: $env:PYTHONPATH='backend'; .\\.venv\\Scripts\\python.exe -m pytest -q
+Result: 118 passed, 0 failed, 0 skipped, 150 warnings.
+Warnings are existing dependency/deprecation warnings and did not fail tests.
+
+6. FRONTEND TEST RESULTS
+
+TypeScript:
+Command: Set-Location frontend; npx tsc --noEmit
+Result: PASS
+
+Lint:
+Command: npm --prefix frontend run lint
+Result: PASS, 0 errors, 0 warnings after the fixture cleanup.
+
+Production build:
+Command: npm --prefix frontend run build
+Result: PASS. The development servers were stopped and generated frontend/.next
+was removed before rebuilding, avoiding the previous Windows EPERM lock.
+
+7. YOUTUBE API TEST
+
+Result: PASS for playlist PLSDeUiTMfxW6VChKWb26Z_mPR4f6fAmMV.
+The existing indexed playlist endpoint returned its expected metadata and 21
+videos. No YouTube API error was observed. The API key was not changed.
+
+8. TRANSCRIPT TEST
+
+Result: PASS for the reproducible playlist. Existing persisted transcript and
+chunk data were available, and the playlist completed indexing with no skipped
+or failed videos.
+
+9. POSTGRESQL TEST
+
+Result: PASS. The backend loaded stored playlist/index state and the new
+transcript_access_blocked column is represented in the model and startup
+migration. The migration is additive and defaults existing rows to false.
+
+10. CHUNKING TEST
+
+Result: PASS. Transcript chunks were available per video and remained scoped to
+the selected playlist.
+
+11. EMBEDDING TEST
+
+Result: PASS. EmbeddingService loaded the configured model and generated a
+384-dimensional finite vector with approximately unit L2 norm. The original
+ModuleNotFoundError is resolved.
+
+12. QDRANT TEST
+
+Result: PASS. The live indexed playlist had searchable vectors, and the
+playlist-scoped retrieval requests returned sources belonging to the selected
+playlist only.
+
+13. RETRIEVAL TEST
+
+Result: PASS. Three real questions completed query embedding, Qdrant search,
+playlist filtering, context construction, LLM generation, and source creation.
+For a representative answer, 4 sources were returned and all source video IDs
+were members of the selected playlist's 21 stored videos.
+
+14. /api/ask TEST
+
+Result: PASS. Three POST /api/ask requests returned HTTP 200 with answers and
+sources:
+- What is the main topic of this playlist?
+- Where is binary search explained?
+- Compare BFS and DFS.
+
+15. FRONTEND E2E TEST
+
+Result: PASS. The browser loaded http://localhost:3000, accepted the playlist
+URL, displayed READY · 21 / 21 VIDEOS and 21 of 21 processed, submitted a real
+question, rendered a grounded answer, and rendered a source link. The previous
+generic search failure did not occur.
+
+16. ORIGINAL 11-VIDEO PLAYLIST TEST
+
+NOT AVAILABLE
+
+The original playlist URL or ID was not present in the repository, logs, or
+supplied diagnostic snapshot. The reproducible 21-video playlist was used
+instead. No claim is made about reproducing the original "5 processed · 5
+failed" state.
+
+17. FAILURE TABLE
+
+Component | Status | Evidence | Root Cause
+Embedding import | FIXED | sentence_transformers import and model test pass | Missing package in active environment
+Backend tests | FIXED | 118 passed | Zero-vector test fixture division by zero
+Index status persistence | FIXED | model and additive migration updated | Runtime field lacked persisted column
+Frontend lint | FIXED | eslint . passes | Deprecated next lint and missing config
+Frontend build | FIXED | next build passes | Previous .next file lock while dev server ran
+YouTube API | PASS | Metadata and 21 videos available | Not a failure
+Transcripts | PASS | 21-video playlist indexed with 0 skipped | Not a failure for reproducible playlist
+Qdrant | PASS | Playlist-filtered answers and sources | Not a failure
+Original 11-video reproduction | UNVERIFIED | Playlist ID unavailable | Missing reproduction input
+
+18. FAILURE CHAIN
+
+Previous chain:
+POST /api/ask -> RetrievalService -> EmbeddingService import failure ->
+EmbeddingModelError -> HTTP 502 -> generic frontend error.
+
+Current chain:
+POST /api/ask -> EmbeddingService -> Qdrant playlist-filtered search ->
+ContextBuilder -> LLMService -> HTTP 200 answer and sources -> browser answer
+rendering. The prior failure chain no longer occurs.
+
+19. REMAINING ISSUES
+
+- The original 11-video playlist failure report cannot be independently verified
+  without its playlist ID or URL.
+- npm install reported dependency audit findings in the local frontend tree
+  (1 moderate and 6 high). These were not part of the confirmed application
+  failure and were not auto-fixed because forced audit fixes can introduce
+  unrelated breaking changes.
+- Existing Python/SQLAlchemy/FastAPI deprecation warnings remain non-blocking.
+
+20. FINAL STATUS
+
+FULLY WORKING for the reproducible localhost playlist and tested end-to-end
+application flow. The original 11-video playlist is outside the verified scope.
+
+21. VERIFICATION COMMANDS
+
+\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt
+\\.venv\\Scripts\\python.exe -c "import sentence_transformers; print(sentence_transformers.__version__)"
+$env:PYTHONPATH='backend'; \\.venv\\Scripts\\python.exe -m pytest -q
+Set-Location frontend; npx tsc --noEmit
+npm --prefix frontend run lint
+npm --prefix frontend run build
+GET http://127.0.0.1:8000/api/health
+GET /api/playlists/PLSDeUiTMfxW6VChKWb26Z_mPR4f6fAmMV/stored
+POST /api/ask with playlist_id=PLSDeUiTMfxW6VChKWb26Z_mPR4f6fAmMV
+Browser verification at http://localhost:3000

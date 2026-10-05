@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ArrowUp, ExternalLink, Info, Plus, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { askQuestion, type AskResponse } from "../../lib/api/videos";
+import { ApiError, askQuestion, type AskResponse } from "../../lib/api/videos";
 import { getStoredPlaylist, type PlaylistData } from "../../lib/api/playlists";
 
 type ChatWindowProps = { playlist: PlaylistData; playlistUrl: string; onLoadAnother: () => void };
@@ -61,8 +61,14 @@ export function ChatWindow({ playlist, playlistUrl, onLoadAnother }: ChatWindowP
     try {
       const response = await askQuestion(query, currentPlaylist.playlist.playlist_id);
       setTurns((current) => [...current, { query, response }]);
-    } catch {
-      setError("I couldn't search the playlist right now. Please try again.");
+    } catch (error) {
+      console.error("AskTube question failed", error);
+      const fallback = "I couldn't search the playlist right now. Please try again.";
+      if (process.env.NODE_ENV === "development" && error instanceof ApiError) {
+        setError(`${fallback} (${error.status}: ${error.message})`);
+      } else {
+        setError(fallback);
+      }
     } finally {
       setIsSearching(false);
     }

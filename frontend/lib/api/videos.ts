@@ -14,6 +14,13 @@ export type TranscriptData = {
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export type AskResponse = {
   query: string;
   answer: string;
@@ -45,7 +52,7 @@ export async function askQuestion(query: string, playlistId?: string, signal?: A
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(body?.detail ?? "We could not answer that question.");
+    throw new ApiError(body?.detail ?? "We could not answer that question.", response.status);
   }
   return body as AskResponse;
 }

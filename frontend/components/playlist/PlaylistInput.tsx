@@ -40,7 +40,7 @@ export function PlaylistInput({ value, onChange, onPlaylistValidated, isProcessi
     try {
       await onPlaylistValidated(result);
       setValidation({ status: "valid", playlist: result });
-    } catch (error) {
+    } catch {
       setValidation({ status: "error", error: "We couldn't process this playlist. Try again or check the playlist link." });
     }
   }

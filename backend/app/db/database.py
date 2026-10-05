@@ -79,6 +79,10 @@ def _migrate_index_status() -> None:
             connection.execute(text("ALTER TABLE playlist_index_status ADD COLUMN processed_videos INTEGER NOT NULL DEFAULT 0"))
         if "video_diagnostics" not in columns:
             connection.execute(text("ALTER TABLE playlist_index_status ADD COLUMN video_diagnostics JSON NOT NULL DEFAULT '[]'"))
+        if "transcript_access_blocked" not in columns:
+            connection.execute(
+                text("ALTER TABLE playlist_index_status ADD COLUMN transcript_access_blocked BOOLEAN NOT NULL DEFAULT FALSE")
+            )
 
 
 def get_session_factory():
