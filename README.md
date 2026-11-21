@@ -24,3 +24,76 @@
 <img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/2b6644d2-da6e-4739-b5fe-bdf602171f26" />
 <img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/aa58e60e-e322-4d4f-a357-36515b5577e9" />
 <img width="1672" height="940" alt="image" src="https://github.com/user-attachments/assets/d366a483-3dfe-4910-b35e-cdd2b1c5b0c0" />
+## Transcript provider configuration
+
+Install the backend dependencies:
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+```
+
+Transcript extraction does not require an API key or proxy. It uses `youtube-transcript-api` and supports both manually created and automatically generated captions. The backend accepts:
+
+- An 11-character YouTube video ID, for example `dQw4w9WgXcQ`
+- A standard URL such as `https://www.youtube.com/watch?v=dQw4w9WgXcQ`
+- A shortened URL such as `https://youtu.be/dQw4w9WgXcQ`
+- A Shorts URL such as `https://youtube.com/shorts/dQw4w9WgXcQ`
+- Embed and live URLs
+
+Copy `.env.example` to `.env` in the backend directory and configure these optional settings:
+
+```env
+YOUTUBE_PROXY_ENABLED=false
+YOUTUBE_PROXY_USERNAME=
+YOUTUBE_PROXY_PASSWORD=
+TRANSCRIPT_PROXY_HTTP=
+TRANSCRIPT_PROXY_HTTPS=
+TRANSCRIPT_PROXY_USERNAME=
+TRANSCRIPT_PROXY_PASSWORD=
+TRANSCRIPT_RETRY_MAX_ATTEMPTS=3
+TRANSCRIPT_RETRY_BASE_DELAY=2
+TRANSCRIPT_PROVIDER_TIMEOUT=30
+TRANSCRIPT_FALLBACK_URL=
+TRANSCRIPT_FALLBACK_API_KEY=
+TRANSCRIPT_CACHE_TTL_HOURS=168
+TRANSCRIPT_CIRCUIT_FAILURE_THRESHOLD=3
+TRANSCRIPT_CIRCUIT_COOLDOWN_SECONDS=300
+```
+
+When a requested language is unavailable, the provider falls back to English. Transcript segments and timestamps are stored and returned in the existing API format. Permanent failures, including missing transcripts, disabled captions, invalid IDs, unavailable/private videos, and unsupported languages, are not retried. Network failures and rate limits use exponential backoff.
+
+Run the application:
+
+```bash
+# Backend
+cd backend
+.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Frontend (from another terminal)
+cd frontend
+npm install
+npm run dev
+```
+
+Test the backend:
+
+```bash
+cd backend
+.venv\\Scripts\\python.exe -m pytest -q
+```
+
+The backend uses `youtube-transcript-api` directly by default. A residential or approved proxy can be enabled with:
+
+- `YOUTUBE_PROXY_ENABLED=true`
+- `YOUTUBE_PROXY_USERNAME`
+- `YOUTUBE_PROXY_PASSWORD`
+- `TRANSCRIPT_PROXY_HTTP`
+- `TRANSCRIPT_PROXY_HTTPS`
+
+Proxy credentials are backend-only and must not be exposed through frontend `NEXT_PUBLIC_*` variables.
+
+Retrieval retries are controlled by `TRANSCRIPT_RETRY_MAX_ATTEMPTS` and `TRANSCRIPT_RETRY_BASE_DELAY`. Permanent transcript, unavailable-video, IP-block, and disabled-caption failures are not retried.
+

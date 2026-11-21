@@ -201,6 +201,37 @@ def test_cached_embeddings_are_reused_and_ready_reingestion_is_idempotent():
     assert len(qdrant.points) == 1
 
 
+def test_partial_playlist_resume_does_not_reprocess_completed_video():
+    indexer, repository, _, _, qdrant = make_indexer([video("video_one1"), video("video_two2")])
+    repository.status = SimpleNamespace(
+        status="INDEXING_PARTIAL",
+        total_videos=2,
+        processed_videos=1,
+        indexed_videos=1,
+        skipped_videos=0,
+        failed_videos=0,
+        transcript_access_blocked=False,
+        last_error=None,
+        video_diagnostics=[{
+            "video_id": "video_one1",
+            "title": "Video video_one1",
+            "status": "indexed",
+            "error": "",
+            "technical_details": "",
+            "stage": "completed",
+            "error_code": "",
+            "provider_name": "",
+            "retryable": "false",
+        }],
+    )
+
+    report = indexer.index_playlist(PLAYLIST_ID)
+
+    assert report.indexed_videos == 2
+    assert len(qdrant.points) == 1
+    assert indexer.transcript_service.calls == ["video_two2"]
+
+
 def test_provider_failure_does_not_report_ready():
     indexer, repository, _, _, _ = make_indexer([video("video_one1")], unavailable=("video_one1",))
     report = indexer.index_playlist(PLAYLIST_ID)
@@ -225,6 +256,67 @@ def test_transcript_provider_exception_is_failed_with_transcript_stage():
     assert report.skipped_videos == 0
     assert repository.status.video_diagnostics[0]["stage"] == "transcript"
     assert "YouTube IP blocked" in repository.status.video_diagnostics[0]["error"]
+
+
+def test_ip_blocked_video_is_failed_and_remaining_videos_continue():
+    indexer, repository, _, _, qdrant = make_indexer([video("video_one1"), video("video_two2")])
+    from app.services.transcript.transcript_service import TranscriptProviderError
+
+    calls = 0
+
+    def get_transcript(video_id):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TranscriptProviderError(
+                "PROVIDER_IP_BLOCKED: blocked",
+                video_id=video_id,
+                error_code="PROVIDER_IP_BLOCKED",
+                provider_name="youtube",
+            )
+        return SimpleNamespace(language="en")
+
+    indexer.transcript_service.get_transcript = get_transcript
+    report = indexer.index_playlist(PLAYLIST_ID)
+
+    assert report.failed_videos == 1
+    assert report.indexed_videos == 1
+    assert report.status == "INDEXING_PARTIAL"
+    assert report.transcript_access_blocked is True
+    assert [point["video_id"] for point in qdrant.points] == ["video_two2"]
+
+
+def test_partial_playlist_retries_retryable_failed_video():
+    indexer, repository, _, _, qdrant = make_indexer([video("video_one1"), video("video_two2")])
+    from app.services.transcript.transcript_service import TranscriptProviderError
+
+    blocked_once = True
+
+    def get_transcript(video_id):
+        nonlocal blocked_once
+        if video_id == "video_two2" and blocked_once:
+            blocked_once = False
+            raise TranscriptProviderError(
+                "PROVIDER_IP_BLOCKED: blocked",
+                video_id=video_id,
+                error_code="PROVIDER_IP_BLOCKED",
+                provider_name="youtube",
+            )
+        return SimpleNamespace(language="en")
+
+    indexer.transcript_service.get_transcript = get_transcript
+    first = indexer.index_playlist(PLAYLIST_ID)
+    assert first.status == "INDEXING_PARTIAL"
+    assert first.failed_videos == 1
+
+    second = indexer.index_playlist(PLAYLIST_ID)
+    assert second.status == "INDEXING_COMPLETED"
+    assert second.indexed_videos == 2
+    assert len(qdrant.points) == 2
+    retry_diagnostic = next(
+        item for item in repository.status.video_diagnostics if item["video_id"] == "video_two2"
+    )
+    assert retry_diagnostic["status"] == "indexed"
 
 
 def test_embedding_failure_does_not_stop_remaining_videos():

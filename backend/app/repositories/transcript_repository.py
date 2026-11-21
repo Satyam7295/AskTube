@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -25,13 +25,19 @@ class TranscriptRepository:
     def session_factory(self) -> Callable[[], Session]:
         return self._session_factory or get_session_factory()
 
-    def get(self, video_id: str, language_code: str | None = None) -> Transcript | None:
+    def get(self, video_id: str, language_code: str | None = None, max_age_hours: int | None = None) -> Transcript | None:
         try:
             with self.session_factory() as session:
                 query = session.query(Transcript).filter(Transcript.video_id == video_id)
                 if language_code:
-                    return query.filter(Transcript.language_code == language_code).one_or_none()
-                return query.order_by((Transcript.language_code == "en").desc(), Transcript.id.asc()).first()
+                    transcript = query.filter(Transcript.language_code == language_code).one_or_none()
+                else:
+                    transcript = query.order_by((Transcript.language_code == "en").desc(), Transcript.id.asc()).first()
+                if transcript is not None and max_age_hours is not None:
+                    cutoff = datetime.utcnow() - timedelta(hours=max(0, max_age_hours))
+                    if transcript.updated_at < cutoff:
+                        return None
+                return transcript
         except (DatabaseConfigurationError, SQLAlchemyError) as error:
             raise TranscriptDatabaseError("Transcript database read failed.") from error
 

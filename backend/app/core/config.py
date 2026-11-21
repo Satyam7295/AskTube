@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,10 +27,27 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.3-70b-versatile"
     transcript_proxy_http: str | None = None
     transcript_proxy_https: str | None = None
+    transcript_proxy_enabled: bool = False
+    youtube_proxy_enabled: bool = False
+    transcript_proxy_username: str | None = None
+    transcript_proxy_password: str | None = None
+    youtube_proxy_username: str | None = None
+    youtube_proxy_password: str | None = None
     transcript_provider_timeout: float = 30.0
-    transcript_max_retries: int = 3
-    transcript_retry_backoff_seconds: float = 0.5
+    transcript_max_retries: int = Field(
+        default=3,
+        validation_alias=AliasChoices("TRANSCRIPT_RETRY_MAX_ATTEMPTS", "transcript_max_retries"),
+    )
+    transcript_retry_backoff_seconds: float = Field(
+        default=0.5,
+        validation_alias=AliasChoices("TRANSCRIPT_RETRY_BASE_DELAY", "transcript_retry_backoff_seconds"),
+    )
     transcript_request_delay_seconds: float = 0.0
+    transcript_fallback_url: str | None = None
+    transcript_fallback_api_key: str | None = None
+    transcript_cache_ttl_hours: int = 168
+    transcript_circuit_failure_threshold: int = 3
+    transcript_circuit_cooldown_seconds: float = 300.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
